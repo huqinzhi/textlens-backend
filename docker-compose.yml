@@ -1,8 +1,8 @@
-version: '3.9'
-
 services:
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     container_name: textlens-api
     ports:
       - "8000:8000"
@@ -16,7 +16,9 @@ services:
     restart: unless-stopped
 
   celery_worker:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     container_name: textlens-celery
     env_file:
       - .env
@@ -27,7 +29,9 @@ services:
     command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
 
   celery_beat:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     container_name: textlens-beat
     env_file:
       - .env
@@ -68,7 +72,9 @@ services:
       retries: 5
 
   flower:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     container_name: textlens-flower
     env_file:
       - .env
