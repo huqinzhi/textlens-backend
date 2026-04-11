@@ -271,7 +271,7 @@ echo ""
 # -----------------------------------------------------------------------------
 log_info "步骤 7: 执行数据库迁移..."
 
-sudo docker compose exec -T api alembic upgrade head
+sudo docker compose exec -T api sh -c "PYTHONPATH=/app alembic upgrade head"
 log_info "数据库迁移完成"
 
 # -----------------------------------------------------------------------------
