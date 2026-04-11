@@ -143,14 +143,14 @@ class PaymentService:
         self.db.add(transaction)
 
         # 创建购买记录
-            provider_enum = PaymentProvider.APPLE_IAP if request.provider == "apple" else PaymentProvider.GOOGLE_IAP
-            purchase = PurchaseRecord(
-                user_id=current_user.id,
-                package_id=request.package_id,
-                amount_usd=package["price_usd"],
-                credits_granted=credits,
-                payment_provider=provider_enum,
-                status=PaymentStatus.SUCCESS,
+        provider_enum = PaymentProvider.APPLE_IAP if request.provider == "apple" else PaymentProvider.GOOGLE_IAP
+        purchase = PurchaseRecord(
+            user_id=current_user.id,
+            package_id=request.package_id,
+            amount_usd=package["price_usd"],
+            credits_granted=credits,
+            payment_provider=provider_enum,
+            status=PaymentStatus.SUCCESS,
             external_order_id=transaction_id,
             receipt_data=request.receipt_data,
         )

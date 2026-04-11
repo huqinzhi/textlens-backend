@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.constants import QualityLevel, TaskStatus, QUALITY_CREDITS_MAP, QUALITY_OPENAI_PARAMS, GENERATION_PROMPT_TEMPLATE
 from app.core.exceptions import InsufficientCreditsError, DailyLimitExceededError, NotFoundError, AuthorizationError, ContentModerationError
-from app.db.models.image import GenerationTask, GenerationStatus, GenerationQuality, DailyFreeUsage
-from app.db.models.credit import CreditAccount, CreditTransaction, TransactionType, TransactionSource
+from app.db.models.image import GenerationTask, GenerationStatus, GenerationQuality
+from app.db.models.credit import CreditAccount, CreditTransaction, TransactionType, TransactionSource, DailyFreeUsage
 from app.external.openai_api import OpenAIClient
 from app.schemas.image import GenerateRequest, GenerationTaskResponse
 

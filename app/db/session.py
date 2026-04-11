@@ -32,3 +32,13 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+async def create_tables():
+    """
+    创建所有数据库表
+
+    在应用启动时调用，确保所有表结构存在。
+    """
+    from app.db.base import Base
+    Base.metadata.create_all(bind=engine)

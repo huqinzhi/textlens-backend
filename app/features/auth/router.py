@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.dependencies import get_current_user
 from app.schemas.user import (
     UserRegisterRequest,
     UserLoginRequest,
@@ -15,6 +16,7 @@ from app.schemas.user import (
     AppleOAuthRequest,
 )
 from app.features.auth.service import AuthService
+from app.db.models.user import User
 
 router = APIRouter()
 
@@ -132,8 +134,8 @@ async def logout(
 
 @router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    current_user=Depends(AuthService.get_current_user_dep),
 ):
     """
     注销账号接口（GDPR 合规）
