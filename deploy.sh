@@ -21,82 +21,11 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # 项目目录
 PROJECT_DIR="/home/huqinzhi/projects/textlens-backend"
 
-echo "=========================================="
-echo "  TextLens 后端一键部署脚本"
-echo "=========================================="
+# ==============================================================================
+# 函数定义
+# ==============================================================================
 
-# -----------------------------------------------------------------------------
-# 步骤 1: 检查并安装 Docker
-# -----------------------------------------------------------------------------
-log_info "步骤 1: 检查并安装 Docker..."
-
-if command -v docker &> /dev/null; then
-    log_info "Docker 已安装: $(docker --version)"
-else
-    log_warn "Docker 未安装，开始安装..."
-    sudo apt-get update
-    sudo apt-get install -y ca-certificates curl gnupg lsb-release
-
-    # 安装 Docker GPG 密钥
-    sudo mkdir -p /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-    # 添加 Docker 仓库
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-    # 安装 Docker
-    sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-    # 将当前用户添加到 docker 组
-    sudo usermod -aG docker $USER
-    log_warn "Docker 已安装，请重新登录或运行: newgrp docker"
-fi
-
-# 启动 Docker
-sudo systemctl start docker 2>/dev/null || true
-sudo systemctl enable docker 2>/dev/null || true
-
-# -----------------------------------------------------------------------------
-# 步骤 2: 创建项目目录并拉取代码
-# -----------------------------------------------------------------------------
-log_info "步骤 2: 准备项目目录..."
-
-if [ -d "$PROJECT_DIR" ]; then
-    log_warn "项目目录已存在，是否更新代码? (y/n)"
-    read -r response
-    if [ "$response" = "y" ]; then
-        cd "$PROJECT_DIR"
-        git pull origin main
-        log_info "代码已更新"
-    fi
-else
-    log_info "创建项目目录并克隆代码..."
-    sudo mkdir -p "$(dirname "$PROJECT_DIR")"
-    sudo chown -R $(whoami):$(id -gn) "$(dirname "$PROJECT_DIR")"
-    git clone https://github.com/huqinzhi/textlens-backend.git "$PROJECT_DIR"
-    cd "$PROJECT_DIR"
-    log_info "代码已克隆到 $PROJECT_DIR"
-fi
-
-# -----------------------------------------------------------------------------
-# 步骤 3: 配置环境变量
-# -----------------------------------------------------------------------------
-log_info "步骤 3: 配置环境变量..."
-
-ENV_FILE="$PROJECT_DIR/.env"
-if [ -f "$ENV_FILE" ]; then
-    log_warn ".env 文件已存在，是否重新配置? (y/n)"
-    read -r response
-    if [ "$response" != "y" ]; then
-        log_info "跳过环境变量配置"
-    else
-        configure_env
-    fi
-else
-    configure_env
-fi
-
+# 配置环境变量函数
 configure_env() {
     log_info "请提供以下配置信息..."
 
@@ -179,6 +108,86 @@ EOF
 
     log_info ".env 文件已创建"
 }
+
+# ==============================================================================
+# 主流程
+# ==============================================================================
+
+echo "=========================================="
+echo "  TextLens 后端一键部署脚本"
+echo "=========================================="
+
+# -----------------------------------------------------------------------------
+# 步骤 1: 检查并安装 Docker
+# -----------------------------------------------------------------------------
+log_info "步骤 1: 检查并安装 Docker..."
+
+if command -v docker &> /dev/null; then
+    log_info "Docker 已安装: $(docker --version)"
+else
+    log_warn "Docker 未安装，开始安装..."
+    sudo apt-get update
+    sudo apt-get install -y ca-certificates curl gnupg lsb-release
+
+    # 安装 Docker GPG 密钥
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+    # 添加 Docker 仓库
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    # 安装 Docker
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+    # 将当前用户添加到 docker 组
+    sudo usermod -aG docker $USER
+    log_warn "Docker 已安装，请重新登录或运行: newgrp docker"
+fi
+
+# 启动 Docker
+sudo systemctl start docker 2>/dev/null || true
+sudo systemctl enable docker 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
+# 步骤 2: 创建项目目录并拉取代码
+# -----------------------------------------------------------------------------
+log_info "步骤 2: 准备项目目录..."
+
+if [ -d "$PROJECT_DIR" ]; then
+    log_warn "项目目录已存在，是否更新代码? (y/n)"
+    read -r response
+    if [ "$response" = "y" ]; then
+        cd "$PROJECT_DIR"
+        git pull origin main
+        log_info "代码已更新"
+    fi
+else
+    log_info "创建项目目录并克隆代码..."
+    sudo mkdir -p "$(dirname "$PROJECT_DIR")"
+    sudo chown -R $(whoami):$(id -gn) "$(dirname "$PROJECT_DIR")"
+    git clone https://github.com/huqinzhi/textlens-backend.git "$PROJECT_DIR"
+    cd "$PROJECT_DIR"
+    log_info "代码已克隆到 $PROJECT_DIR"
+fi
+
+# -----------------------------------------------------------------------------
+# 步骤 3: 配置环境变量
+# -----------------------------------------------------------------------------
+log_info "步骤 3: 配置环境变量..."
+
+ENV_FILE="$PROJECT_DIR/.env"
+if [ -f "$ENV_FILE" ]; then
+    log_warn ".env 文件已存在，是否重新配置? (y/n)"
+    read -r response
+    if [ "$response" != "y" ]; then
+        log_info "跳过环境变量配置"
+    else
+        configure_env
+    fi
+else
+    configure_env
+fi
 
 # -----------------------------------------------------------------------------
 # 步骤 4: 配置 Nginx
@@ -292,7 +301,7 @@ sudo docker-compose exec -T api alembic upgrade head
 log_info "数据库迁移完成"
 
 # -----------------------------------------------------------------------------
-# 步骤 8: 创建管理员用户 (可选)
+# 步骤 8: 检查服务状态
 # -----------------------------------------------------------------------------
 log_info "步骤 8: 检查服务状态..."
 
