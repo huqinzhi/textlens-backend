@@ -125,13 +125,16 @@ class RateLimitError(TextLensException):
     请求频率超限异常
 
     用户请求频率超过限制时抛出。
+    [detail] 错误详情描述
     [retry_after] 建议的重试等待秒数
     """
 
-    def __init__(self, retry_after: int = 60):
+    def __init__(self, detail: str = None, retry_after: int = 60):
+        if detail is None:
+            detail = f"Rate limit exceeded. Retry after {retry_after} seconds"
         super().__init__(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Rate limit exceeded. Retry after {retry_after} seconds",
+            detail=detail,
             error_code="RATE_LIMIT_EXCEEDED",
         )
 

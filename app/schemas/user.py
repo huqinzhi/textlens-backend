@@ -138,3 +138,110 @@ class PasswordResetConfirmRequest(BaseModel):
     """
     token: str
     new_password: str = Field(..., min_length=8, max_length=100)
+
+
+class SendVerifyCodeRequest(BaseModel):
+    """
+    发送验证码请求体
+
+    [email] 目标邮箱地址
+    [scene] 验证场景 (register/login/reset_password)
+    """
+    email: EmailStr
+    scene: str = Field(..., pattern="^(register|login|reset_password)$")
+
+
+class VerifyCodeRequest(BaseModel):
+    """
+    验证验证码请求体
+
+    [email] 目标邮箱地址
+    [scene] 验证场景
+    [code] 用户输入的验证码
+    """
+    email: EmailStr
+    scene: str = Field(..., pattern="^(register|login|reset_password)$")
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class VerifyCodeResponse(BaseModel):
+    """
+    验证码验证成功响应
+
+    [valid] 验证是否成功
+    [token] 验证成功后返回的临时 Token
+    """
+    valid: bool
+    token: Optional[str] = None
+
+
+class SendCodeResponse(BaseModel):
+    """
+    发送验证码响应
+
+    [message] 提示信息
+    [expires_in] 验证码有效期（秒）
+    """
+    message: str
+    expires_in: int
+
+
+class RegisterCompleteRequest(BaseModel):
+    """
+    完成注册请求体（验证码验证后）
+
+    [verify_token] 验证码验证后获得的临时 Token
+    [password] 密码，至少8位
+    [username] 用户名（可选）
+    [age_verified] 年龄验证（COPPA合规，13岁以上）
+    [terms_accepted] 是否同意用户协议
+    [privacy_accepted] 是否同意隐私政策
+    [invite_code] 邀请码（可选）
+    """
+    verify_token: str
+    password: str = Field(..., min_length=8, max_length=100)
+    username: Optional[str] = Field(None, max_length=50)
+    age_verified: bool
+    terms_accepted: bool
+    privacy_accepted: bool
+    invite_code: Optional[str] = Field(None, max_length=20)
+
+
+class LoginCodeRequest(BaseModel):
+    """
+    请求登录验证码请求体
+
+    [email] 登录邮箱地址
+    """
+    email: EmailStr
+
+
+class LoginVerifyRequest(BaseModel):
+    """
+    验证登录验证码请求体
+
+    [email] 登录邮箱地址
+    [code] 验证码
+    """
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class PasswordResetSendRequest(BaseModel):
+    """
+    发送密码重置验证码请求体
+
+    [email] 注册邮箱地址
+    """
+    email: EmailStr
+
+
+class PasswordResetConfirmV2Request(BaseModel):
+    """
+    确认重置密码请求体（验证码模式）
+
+    [verify_token] 验证码验证后获得的临时 Token
+    [new_password] 新密码，至少8位
+    """
+    verify_token: str
+    new_password: str = Field(..., min_length=8, max_length=100)
