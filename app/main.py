@@ -80,7 +80,7 @@ def create_application() -> FastAPI:
     application.include_router(generation_router, prefix=f"{API_PREFIX}/generate", tags=["AI生图"])
     application.include_router(history_router, prefix=f"{API_PREFIX}/history", tags=["历史记录"])
     application.include_router(payments_router, prefix=f"{API_PREFIX}/payments", tags=["支付"])
-    application.include_router(admin_router, tags=["管理员"])
+    application.include_router(admin_router, prefix=f"{API_PREFIX}/admin", tags=["管理员"])
 
     return application
 
