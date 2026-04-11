@@ -7,12 +7,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 
 from app.config import settings
-
-# 密码哈希上下文，使用 bcrypt 算法
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
@@ -23,7 +20,7 @@ def hash_password(password: str) -> str:
     [password] 明文密码字符串
     返回 哈希后的密码字符串
     """
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -34,7 +31,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     [hashed_password] 数据库中存储的哈希密码
     返回 匹配返回 True，否则返回 False
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception:
+        return False
 
 
 def create_access_token(
