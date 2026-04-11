@@ -60,7 +60,7 @@ def create_admin_user():
                 is_email_verified, is_active, is_admin, age_verified,
                 privacy_accepted_at, terms_accepted_at, created_at, updated_at
             ) VALUES (
-                '{user_id}', 'admin', '{password_hash}', 'admin', 'email',
+                '{user_id}', 'admin@gmail.com', '{password_hash}', 'admin', 'EMAIL',
                 true, true, true, true,
                 '{now}', '{now}', '{now}', '{now}'
             )
