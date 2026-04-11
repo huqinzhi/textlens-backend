@@ -20,7 +20,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.db.session import SessionLocal
 from app.db.models.user import User, AuthProvider
 from app.db.models.credit import CreditAccount
-from app.core.security import hash_password
+import bcrypt
+
+
+def hash_password(password: str) -> str:
+    """
+    对用户密码进行哈希处理
+
+    [password] 明文密码字符串
+    返回 哈希后的密码字符串
+    """
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 def create_admin_user():
