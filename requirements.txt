@@ -29,9 +29,6 @@ google-auth==2.29.0
 # Stability AI (图片生成)
 stability-sdk==0.8.6
 
-# Stripe Payment
-stripe==9.9.0
-
 # Validation & Settings
 pydantic==2.7.1
 pydantic-settings==2.3.0

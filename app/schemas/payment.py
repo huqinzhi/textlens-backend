@@ -9,17 +9,6 @@ import uuid
 from app.core.constants import PaymentProvider, PaymentStatus
 
 
-class PurchaseRequest(BaseModel):
-    """
-    发起积分购买请求体（适用于 Stripe）
-
-    [package_id] 套餐 ID: starter/basic/pro/premium
-    [payment_method_id] Stripe Payment Method ID
-    """
-    package_id: str
-    payment_method_id: str
-
-
 class IAPVerifyRequest(BaseModel):
     """
     IAP 收据验证请求体（适用于 Apple/Google）
@@ -35,19 +24,19 @@ class IAPVerifyRequest(BaseModel):
     transaction_id: Optional[str] = None
 
 
-class PurchaseResponse(BaseModel):
+class IAPVerifyResponse(BaseModel):
     """
-    购买成功响应体
+    IAP 收据验证响应体
 
-    [order_id] 订单 ID
-    [credits_granted] 获得的积分数
-    [new_balance] 购买后积分余额
-    [package_id] 购买的套餐 ID
+    [success] 验证是否成功
+    [credits_granted] 本次发放的积分数（重复购买返回 0）
+    [current_balance] 验证后的积分余额
+    [message] 结果说明
     """
-    order_id: uuid.UUID
+    success: bool
     credits_granted: int
-    new_balance: int
-    package_id: str
+    current_balance: int
+    message: str
 
 
 class PurchaseRecordItem(BaseModel):
@@ -64,52 +53,6 @@ class PurchaseRecordItem(BaseModel):
     status: PaymentStatus
     created_at: datetime
     paid_at: Optional[datetime]
-
-
-class StripeClientSecretResponse(BaseModel):
-    """
-    Stripe PaymentIntent Client Secret 响应体
-
-    [client_secret] 客户端密钥，用于 Stripe.js 完成支付
-    [order_id] 内部订单 ID
-    """
-    client_secret: str
-    order_id: str
-
-
-class CreateCheckoutRequest(BaseModel):
-    """
-    创建 Stripe Checkout 会话请求体
-
-    [package_id] 积分套餐 ID（starter/basic/pro/premium）
-    """
-    package_id: str
-
-
-class CreateCheckoutResponse(BaseModel):
-    """
-    创建 Stripe Checkout 会话响应体
-
-    [checkout_url] Stripe 支付页面跳转 URL
-    [session_id] Stripe Checkout Session ID
-    """
-    checkout_url: str
-    session_id: str
-
-
-class IAPVerifyResponse(BaseModel):
-    """
-    IAP 收据验证响应体
-
-    [success] 验证是否成功
-    [credits_granted] 本次发放的积分数（重复购买返回 0）
-    [current_balance] 验证后的积分余额
-    [message] 结果说明
-    """
-    success: bool
-    credits_granted: int
-    current_balance: int
-    message: str
 
 
 # 兼容别名：支付记录响应体（供路由使用）

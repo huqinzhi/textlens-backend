@@ -75,11 +75,9 @@ class PaymentProvider(str, Enum):
     """
     支付渠道枚举
 
-    STRIPE      - Stripe 信用卡支付
     APPLE_IAP   - Apple 应用内购买
     GOOGLE_IAP  - Google Play 应用内购买
     """
-    STRIPE = "stripe"
     APPLE_IAP = "apple_iap"
     GOOGLE_IAP = "google_iap"
 

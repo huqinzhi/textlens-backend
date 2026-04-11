@@ -21,7 +21,6 @@ class PaymentStatus(str, enum.Enum):
 
 class PaymentProvider(str, enum.Enum):
     """支付渠道枚举"""
-    STRIPE = "stripe"
     APPLE_IAP = "apple_iap"
     GOOGLE_IAP = "google_iap"
 

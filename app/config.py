@@ -67,12 +67,8 @@ class Settings(BaseSettings):
     GOOGLE_CLOUD_PROJECT_ID: Optional[str] = None
     GOOGLE_CLOUD_CREDENTIALS_JSON: Optional[str] = None
 
-    # ── Stripe 支付配置 ───────────────────────────────────────────────
-    STRIPE_API_KEY: Optional[str] = None
-    STRIPE_SECRET_KEY: Optional[str] = None   # 别名，与 STRIPE_API_KEY 等效
-    STRIPE_WEBHOOK_SECRET: Optional[str] = None
-    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
-    APP_BASE_URL: str = "https://api.textlens.app"
+    # ── Apple IAP 配置 ─────────────────────────────────────────────────
+    APPLE_IAP_SECRET: Optional[str] = None
 
     # ── AWS S3 / Cloudflare R2 存储配置 ───────────────────────────────
     AWS_ACCESS_KEY_ID: Optional[str] = None
@@ -101,15 +97,9 @@ class Settings(BaseSettings):
     OCR_SPACE_API_KEY: Optional[str] = None
     OCR_PROVIDER: str = "ocr_space"  # "google_vision" 或 "ocr_space"
 
-    # ── Apple IAP 配置 ─────────────────────────────────────────────────
-    APPLE_IAP_SECRET: Optional[str] = None
-
     # ── Stability AI 生图配置 ───────────────────────────────────────────
     STABILITY_API_KEY: Optional[str] = None
     STABILITY_ENGINE_ID: str = "stable-diffusion-xl-1024-v1-0"  # 默认生图引擎
-
-    # ── 图片生成provider配置 ─────────────────────────────────────────────
-    IMAGE_GENERATION_PROVIDER: str = "openai"  # openai 或 stability
 
     # ── Celery 任务队列 URL（别名）─────────────────────────────────────
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"

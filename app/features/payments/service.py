@@ -1,6 +1,6 @@
 """
 支付业务逻辑服务层
-处理 Stripe Checkout 创建、IAP 收据验证、Webhook 回调处理
+处理 IAP 收据验证、积分发放等核心逻辑
 """
 import json
 from sqlalchemy.orm import Session
@@ -12,26 +12,22 @@ from app.db.models.credit import CreditAccount, CreditTransaction
 from app.core.constants import CreditTransactionType, CreditSourceType
 from app.db.models.payment import PurchaseRecord, PaymentProvider, PaymentStatus
 from app.schemas.payment import (
-    CreateCheckoutResponse,
     IAPVerifyRequest,
     IAPVerifyResponse,
 )
 from app.schemas.common import PageResponse
-from app.external.stripe_api import StripeClient
 
 
 class PaymentService:
     """
     支付服务类
 
-    封装所有支付相关业务逻辑，包括 Stripe 订单创建、
-    IAP 收据验证、Webhook 处理和积分发放。
+    封装所有支付相关业务逻辑，包括 IAP 收据验证和积分发放。
     [db] SQLAlchemy 数据库会话
     """
 
     def __init__(self, db: Session):
         self.db = db
-        self.stripe_client = StripeClient()
 
     def _get_package(self, package_id: str) -> dict:
         """
@@ -44,46 +40,6 @@ class PaymentService:
         if not package:
             raise ValidationError(f"Invalid package_id: {package_id}")
         return package
-
-    async def create_checkout(self, current_user, package_id: str) -> CreateCheckoutResponse:
-        """
-        创建 Stripe Checkout 支付会话
-
-        根据套餐 ID 创建 Stripe Checkout Session，返回支付页面 URL。
-
-        [current_user] 当前登录用户
-        [package_id] 套餐 ID
-        返回 CreateCheckoutResponse 含 checkout_url 和 session_id
-        """
-        package = self._get_package(package_id)
-
-        # 创建 Stripe Checkout Session
-        session = await self.stripe_client.create_checkout_session(
-            user_id=str(current_user.id),
-            user_email=current_user.email,
-            package_id=package_id,
-            amount_cents=int(package["price_usd"] * 100),
-            credits=package["credits"],
-            package_name=package["name"],
-        )
-
-        # 预创建待支付的购买记录
-        purchase = PurchaseRecord(
-            user_id=current_user.id,
-            package_id=package_id,
-            amount_usd=package["price_usd"],
-            credits_granted=package["credits"],
-            payment_provider=PaymentProvider.STRIPE,
-            status=PaymentStatus.PENDING,
-            external_order_id=session["id"],
-        )
-        self.db.add(purchase)
-        self.db.commit()
-
-        return CreateCheckoutResponse(
-            checkout_url=session["url"],
-            session_id=session["id"],
-        )
 
     async def verify_iap(self, current_user, request: IAPVerifyRequest) -> IAPVerifyResponse:
         """
@@ -215,59 +171,6 @@ class PaymentService:
             return order_id
         except (json.JSONDecodeError, KeyError) as e:
             raise ValidationError(f"Invalid Google receipt format: {e}")
-
-    async def handle_stripe_webhook(self, payload: bytes, signature: str) -> dict:
-        """
-        处理 Stripe Webhook 事件
-
-        验证签名后解析事件类型，目前处理 checkout.session.completed 事件。
-        发放积分并更新购买记录状态。
-
-        [payload] Webhook 原始请求体（字节流）
-        [signature] Stripe-Signature 请求头
-        返回处理结果字典
-        """
-        # 验证 Stripe 签名
-        event = await self.stripe_client.verify_webhook(payload, signature)
-
-        if event["type"] == "checkout.session.completed":
-            session = event["data"]["object"]
-            session_id = session["id"]
-
-            # 查找对应的购买记录
-            purchase = self.db.query(PurchaseRecord).filter(
-                PurchaseRecord.external_order_id == session_id
-            ).first()
-
-            if purchase and purchase.status == PaymentStatus.PENDING:
-                # 更新购买记录状态
-                purchase.status = PaymentStatus.SUCCESS
-                purchase.webhook_data = event
-
-                # 发放积分
-                credit_account = self.db.query(CreditAccount).filter(
-                    CreditAccount.user_id == purchase.user_id
-                ).with_for_update().first()
-
-                if credit_account:
-                    credits = purchase.credits_granted
-                    credit_account.balance += credits
-                    credit_account.total_earned += credits
-
-                    transaction = CreditTransaction(
-                        user_id=purchase.user_id,
-                        credit_account_id=credit_account.id,
-                        amount=credits,
-                        type=CreditTransactionType.earn,
-                        source=CreditSourceType.purchase,
-                        ref_id=session_id,
-                        description=f"Stripe purchase: +{credits} credits",
-                        balance_after=credit_account.balance,
-                    )
-                    self.db.add(transaction)
-                    self.db.commit()
-
-        return {"received": True}
 
     async def get_purchase_history(self, current_user) -> PageResponse:
         """

@@ -101,8 +101,8 @@ class GenerationService:
         self.db.commit()
 
         # 提交 Celery 异步任务
-        from app.tasks.generation_tasks import process_generation_task
-        celery_task = process_generation_task.delay(str(task.id))
+        from app.tasks.generation_tasks import process_generation
+        celery_task = process_generation.delay(str(task.id))
         task.celery_task_id = celery_task.id
         self.db.commit()
 
