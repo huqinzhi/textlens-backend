@@ -53,8 +53,8 @@ def create_application() -> FastAPI:
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description="TextLens AI 图片文字编辑服务端 API",
-        docs_url="/api/docs" if settings.APP_DEBUG else None,
-        redoc_url="/api/redoc" if settings.APP_DEBUG else None,
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
         lifespan=lifespan,
     )
 
