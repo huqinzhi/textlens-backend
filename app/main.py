@@ -20,6 +20,7 @@ from app.features.ocr.router import router as ocr_router
 from app.features.generation.router import router as generation_router
 from app.features.history.router import router as history_router
 from app.features.payments.router import router as payments_router
+from app.features.admin.router import router as admin_router
 
 
 @asynccontextmanager
@@ -79,6 +80,7 @@ def create_application() -> FastAPI:
     application.include_router(generation_router, prefix=f"{API_PREFIX}/generate", tags=["AI生图"])
     application.include_router(history_router, prefix=f"{API_PREFIX}/history", tags=["历史记录"])
     application.include_router(payments_router, prefix=f"{API_PREFIX}/payments", tags=["支付"])
+    application.include_router(admin_router, tags=["管理员"])
 
     return application
 
