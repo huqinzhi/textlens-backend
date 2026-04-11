@@ -5,20 +5,19 @@
 # 域名: https://hqzservice.top/
 # ============================================================================
 
-set -e  # 遇到错误立即退出
+set -e
 
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # 日志函数
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# 项目目录
 PROJECT_DIR="/home/huqinzhi/projects/textlens-backend"
 
 # ==============================================================================
@@ -27,26 +26,26 @@ PROJECT_DIR="/home/huqinzhi/projects/textlens-backend"
 
 # 配置环境变量函数
 configure_env() {
-    log_info "请提供以下配置信息..."
+    log_info "请提供以下配置信息（或直接回车跳过）..."
 
     echo ""
     echo "请输入 PostgreSQL 密码 (数据库用户: textlens_user):"
     read -r -s DB_PASSWORD
     echo ""
 
-    echo "请输入 JWT 密钥 (直接回车生成随机密钥):"
+    echo "请输入 JWT 密钥 (直接回车自动生成):"
     read -r JWT_SECRET
     if [ -z "$JWT_SECRET" ]; then
         JWT_SECRET=$(openssl rand -base64 32)
     fi
 
-    echo "请输入 OpenAI API Key (sk-...) - 用于内容审核:"
+    echo "OpenAI API Key (sk-...): 直接回车跳过"
     read -r OPENAI_API_KEY
 
-    echo "请输入 Stability AI API Key (sk-...) - 用于图片生成:"
+    echo "Stability AI API Key (sk-...): 直接回车跳过"
     read -r STABILITY_API_KEY
 
-    echo "请输入 Stripe Secret Key (sk_test_...) - 可选:"
+    echo "Stripe Secret Key (sk_test_...): 直接回车跳过"
     read -r STRIPE_SECRET_KEY
 
     # 创建 .env 文件
@@ -73,20 +72,20 @@ JWT_ALGORITHM=HS256
 JWT_EXPIRATION_HOURS=24
 JWT_REFRESH_EXPIRATION_DAYS=30
 
-# OCR 配置
+# OCR 配置 (使用 OCR.space 免费 API)
 OCR_SPACE_API_KEY=K85802480388957
 OCR_PROVIDER=ocr_space
 
-# OpenAI (用于内容审核)
+# OpenAI (用于内容审核) - 可留空
 OPENAI_API_KEY=${OPENAI_API_KEY}
 OPENAI_MODEL=gpt-4o
 
-# Stability AI (用于图片生成)
+# Stability AI (用于图片生成) - 可留空
 STABILITY_API_KEY=${STABILITY_API_KEY}
 STABILITY_ENGINE_ID=stable-diffusion-xl-1024-v1-0
 IMAGE_GENERATION_PROVIDER=stability
 
-# Stripe
+# Stripe - 可留空
 STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
 STRIPE_WEBHOOK_SECRET=
 
@@ -107,6 +106,7 @@ CORS_ORIGINS=["https://hqzservice.top","https://www.hqzservice.top"]
 EOF
 
     log_info ".env 文件已创建"
+    log_warn "注意: OpenAI/Stability AI API Key 如留空，请在 .env 文件中后续补充"
 }
 
 # ==============================================================================
@@ -129,28 +129,22 @@ else
     sudo apt-get update
     sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
-    # 安装 Docker GPG 密钥
     sudo mkdir -p /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-    # 添加 Docker 仓库
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-    # 安装 Docker
     sudo apt-get update
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-    # 将当前用户添加到 docker 组
     sudo usermod -aG docker $USER
     log_warn "Docker 已安装，请重新登录或运行: newgrp docker"
 fi
 
-# 启动 Docker
 sudo systemctl start docker 2>/dev/null || true
 sudo systemctl enable docker 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
-# 步骤 2: 创建项目目录并拉取代码
+# 步骤 2: 准备项目目录
 # -----------------------------------------------------------------------------
 log_info "步骤 2: 准备项目目录..."
 
@@ -196,7 +190,6 @@ log_info "步骤 4: 配置 Nginx 反向代理..."
 
 NGINX_CONF="/etc/nginx/sites-available/hqzservice.top"
 
-# 更新 Nginx 配置，将端口从 5000 改为 8000
 sudo tee "$NGINX_CONF" > /dev/null << 'EOF'
 server {
     server_name hqzservice.top www.hqzservice.top;
@@ -207,13 +200,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-
-        # WebSocket 支持 (如有需要)
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-
-        # 超时设置
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
@@ -244,7 +233,6 @@ server {
 }
 EOF
 
-# 测试并重载 Nginx
 sudo nginx -t && sudo systemctl reload nginx
 log_info "Nginx 配置已更新"
 
@@ -254,13 +242,8 @@ log_info "Nginx 配置已更新"
 log_info "步骤 5: 启动 Docker 服务..."
 
 cd "$PROJECT_DIR"
-
-# 创建必要的数据目录
 mkdir -p data/postgres data/redis
-
-# 使用 docker-compose 启动所有服务
 sudo docker-compose up -d --build
-
 log_info "Docker 服务已启动"
 
 # -----------------------------------------------------------------------------
@@ -268,7 +251,6 @@ log_info "Docker 服务已启动"
 # -----------------------------------------------------------------------------
 log_info "步骤 6: 等待服务就绪..."
 
-# 等待 PostgreSQL 就绪
 log_info "等待 PostgreSQL..."
 for i in {1..30}; do
     if sudo docker-compose exec -T db pg_isready -U textlens_user -d textlens &>/dev/null; then
@@ -280,7 +262,6 @@ for i in {1..30}; do
 done
 echo ""
 
-# 等待 Redis 就绪
 log_info "等待 Redis..."
 for i in {1..15}; do
     if sudo docker-compose exec -T redis redis-cli ping &>/dev/null; then
@@ -305,10 +286,7 @@ log_info "数据库迁移完成"
 # -----------------------------------------------------------------------------
 log_info "步骤 8: 检查服务状态..."
 
-# 查看服务状态
 sudo docker-compose ps
-
-# 查看 API 日志
 log_info "最近 API 日志:"
 sudo docker-compose logs --tail=10 api
 
@@ -323,8 +301,7 @@ echo ""
 echo "API 地址: https://hqzservice.top"
 echo "API 文档: https://hqzservice.top/api/docs"
 echo ""
-echo "常用命令:"
-echo "  查看日志: cd $PROJECT_DIR && sudo docker-compose logs -f"
-echo "  重启服务: cd $PROJECT_DIR && sudo docker-compose restart"
-echo "  更新代码: cd $PROJECT_DIR && git pull && sudo docker-compose up -d --build"
+echo "后续配置（如需补充 API Key）:"
+echo "  nano $PROJECT_DIR/.env"
+echo "  sudo docker-compose restart"
 echo ""
