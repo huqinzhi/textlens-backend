@@ -12,7 +12,7 @@
 import sys
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,16 +36,17 @@ def create_admin_user():
 
     创建一个邮箱为 admin，密码为 123456 的管理员用户，初始积分 99999
     """
+    from sqlalchemy import text
     from app.db.session import engine
 
     password_hash = hash_password('123456')
     user_id = str(uuid.uuid4())
-    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
     with engine.connect() as conn:
         # 检查是否已存在管理员
         result = conn.execute(
-            f"SELECT id FROM users WHERE email = 'admin' AND is_admin = true AND deleted_at IS NULL"
+            text("SELECT id FROM users WHERE email = 'admin' AND is_admin = true AND deleted_at IS NULL")
         )
         if result.fetchone():
             print('管理员已存在，跳过创建')
@@ -53,7 +54,7 @@ def create_admin_user():
 
         # 直接插入用户
         conn.execute(
-            f"""
+            text(f"""
             INSERT INTO users (
                 id, email, password_hash, username, auth_provider,
                 is_email_verified, is_active, is_admin, age_verified,
@@ -63,15 +64,15 @@ def create_admin_user():
                 true, true, true, true,
                 '{now}', '{now}', '{now}', '{now}'
             )
-            """
+            """)
         )
 
         # 插入积分账户
         conn.execute(
-            f"""
+            text(f"""
             INSERT INTO credit_accounts (user_id, balance, total_earned, total_spent)
             VALUES ('{user_id}', 99999, 99999, 0)
-            """
+            """)
         )
         conn.commit()
 
