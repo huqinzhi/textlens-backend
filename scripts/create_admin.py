@@ -17,9 +17,13 @@ from datetime import datetime
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db.session import SessionLocal
-from app.db.models.user import User, AuthProvider
+# 重要：先导入所有模型，避免 SQLAlchemy relationship 循环引用问题
+from app.db.models.user import User
 from app.db.models.credit import CreditAccount
+from app.db.models.image import GenerationTask, Image, OCRResult  # noqa
+from app.db.models.payment import PurchaseRecord  # noqa
+from app.db.session import SessionLocal
+
 import bcrypt
 
 
