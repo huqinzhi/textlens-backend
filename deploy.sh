@@ -236,7 +236,7 @@ log_info "步骤 5: 启动 Docker 服务..."
 
 cd "$PROJECT_DIR"
 mkdir -p data/postgres data/redis
-sudo docker-compose up -d --build
+sudo docker compose up -d --build
 log_info "Docker 服务已启动"
 
 # -----------------------------------------------------------------------------
@@ -246,7 +246,7 @@ log_info "步骤 6: 等待服务就绪..."
 
 log_info "等待 PostgreSQL..."
 for i in {1..30}; do
-    if sudo docker-compose exec -T db pg_isready -U textlens_user -d textlens &>/dev/null; then
+    if sudo docker compose exec -T db pg_isready -U textlens_user -d textlens &>/dev/null; then
         log_info "PostgreSQL 已就绪"
         break
     fi
@@ -257,7 +257,7 @@ echo ""
 
 log_info "等待 Redis..."
 for i in {1..15}; do
-    if sudo docker-compose exec -T redis redis-cli ping &>/dev/null; then
+    if sudo docker compose exec -T redis redis-cli ping &>/dev/null; then
         log_info "Redis 已就绪"
         break
     fi
@@ -271,7 +271,7 @@ echo ""
 # -----------------------------------------------------------------------------
 log_info "步骤 7: 执行数据库迁移..."
 
-sudo docker-compose exec -T api alembic upgrade head
+sudo docker compose exec -T api alembic upgrade head
 log_info "数据库迁移完成"
 
 # -----------------------------------------------------------------------------
@@ -279,9 +279,9 @@ log_info "数据库迁移完成"
 # -----------------------------------------------------------------------------
 log_info "步骤 8: 检查服务状态..."
 
-sudo docker-compose ps
+sudo docker compose ps
 log_info "最近 API 日志:"
-sudo docker-compose logs --tail=10 api
+sudo docker compose logs --tail=10 api
 
 # -----------------------------------------------------------------------------
 # 完成
@@ -296,5 +296,5 @@ echo "API 文档: https://hqzservice.top/api/docs"
 echo ""
 echo "后续配置（如需补充 API Key）:"
 echo "  nano $PROJECT_DIR/.env"
-echo "  sudo docker-compose restart"
+echo "  sudo docker compose restart"
 echo ""
