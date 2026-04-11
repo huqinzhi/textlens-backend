@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     APP_LOG_LEVEL: str = "INFO"
     APP_NAME: str = "TextLens API"
     APP_VERSION: str = "1.0.0"
+    APP_BASE_URL: str = "http://localhost:3000"  # 前端应用地址
+    IMAGE_GENERATION_PROVIDER: str = "stability"  # 图片生成提供商: stability / openai
 
     # ── 数据库配置 ────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql://textlens_user:password@localhost:5432/textlens"
@@ -69,6 +71,10 @@ class Settings(BaseSettings):
 
     # ── Apple IAP 配置 ─────────────────────────────────────────────────
     APPLE_IAP_SECRET: Optional[str] = None
+
+    # ── Resend 邮件配置 ──────────────────────────────────────────────────
+    RESEND_API_KEY: Optional[str] = None
+    RESEND_FROM_EMAIL: str = "TextLens <noreply@textlens.com>"
 
     # ── AWS S3 / Cloudflare R2 存储配置 ───────────────────────────────
     AWS_ACCESS_KEY_ID: Optional[str] = None
