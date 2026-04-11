@@ -24,6 +24,7 @@ aioboto3==12.3.0
 
 # Google Cloud Vision OCR
 google-cloud-vision==3.7.2
+google-auth==2.29.0
 
 # OpenAI GPT-4o
 openai==1.30.1

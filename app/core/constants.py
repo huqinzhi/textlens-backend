@@ -122,8 +122,49 @@ QUALITY_OPENAI_PARAMS = {
 }
 
 # ── AI 生图 Prompt 模板 ─────────────────────────────────────────────────
-GENERATION_PROMPT_TEMPLATE = """Edit the text in this image. Replace the following text regions:
+# 图片文字编辑的核心提示词模板
+# 包含详细的风格、字体、位置等约束，确保修改后的图片与原图保持一致
+GENERATION_PROMPT_TEMPLATE = """You are a professional image text editor. Your task is to replace text in images while preserving the original visual style.
+
+## IMAGE ANALYSIS
+- Original image dimensions: {image_width}x{image_height} pixels
+- Text language: {language}
+- Number of text regions to edit: {region_count}
+
+## TEXT REGIONS TO EDIT
 {regions}
-Keep the exact same font style, size, color, background, and lighting.
-The result must look photorealistic and natural.
-Do not change any other parts of the image."""
+
+## CRITICAL REQUIREMENTS
+
+### 1. TEXT REPLACEMENT
+- Replace ONLY the specified text regions with the new text provided
+- Keep ALL other parts of the image completely unchanged
+- Do NOT modify any background, objects, colors, or non-text elements
+
+### 2. VISUAL STYLE PRESERVATION (MOST IMPORTANT)
+- Font style: Match the original font exactly (serif, sans-serif, decorative, etc.)
+- Font size: Maintain proportional size relative to the original text box
+- Font weight: Match bold, regular, or light weight of original
+- Font color: Use the EXACT same color as the original text
+- Letter spacing: Preserve the original letter/kerning spacing
+- Line height: Maintain the same line spacing if multiline
+
+### 3. POSITION & ALIGNMENT
+- Text position: Place new text at the EXACT same coordinates as original
+- Text alignment: Keep left/center/right alignment unchanged
+- Bounding box: New text should fit within the same invisible boundary box
+
+### 4. LIGHTING & EFFECTS
+- Preserve any text effects (shadows, outlines, gradients, embossing)
+- Match the lighting direction and intensity of the original text
+- Keep any special effects (glow, reflection, 3D depth) identical
+
+### 5. BACKGROUND INTEGRITY
+- Do NOT introduce any artifacts, borders, or halos around replaced text
+- The transition between new text and background must be seamless
+- Maintain exact background texture, pattern, and color
+
+## OUTPUT REQUIREMENT
+- The edited image must look completely natural, as if the text was always that way
+- No viewer should be able to detect that any text was modified
+- Photorealistic quality is mandatory"""

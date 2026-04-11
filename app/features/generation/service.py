@@ -10,7 +10,8 @@ from app.config import settings
 from app.core.constants import QualityLevel, TaskStatus, QUALITY_CREDITS_MAP, QUALITY_OPENAI_PARAMS, GENERATION_PROMPT_TEMPLATE
 from app.core.exceptions import InsufficientCreditsError, DailyLimitExceededError, NotFoundError, AuthorizationError, ContentModerationError
 from app.db.models.image import GenerationTask, GenerationStatus, GenerationQuality
-from app.db.models.credit import CreditAccount, CreditTransaction, TransactionType, TransactionSource, DailyFreeUsage
+from app.db.models.credit import CreditAccount, CreditTransaction, DailyFreeUsage
+from app.core.constants import CreditTransactionType, CreditSourceType
 from app.external.openai_api import OpenAIClient
 from app.schemas.image import GenerateRequest, GenerationTaskResponse
 
@@ -66,12 +67,29 @@ class GenerationService:
         if not is_safe:
             raise ContentModerationError()
 
+        # 获取原始图片和 OCR 结果
+        from app.db.models.image import Image, OCRResult
+        image = self.db.query(Image).filter(Image.id == request.image_id).first()
+        if not image:
+            raise NotFoundError("Image not found")
+
+        ocr_result = self.db.query(OCRResult).filter(OCRResult.image_id == request.image_id).first()
+
+        # 构建 OCR 数据快照（包含尺寸和语言信息供生成时使用）
+        ocr_data = {
+            "text_blocks": ocr_result.text_blocks if ocr_result else [],
+            "image_width": image.width or 1024,
+            "image_height": image.height or 1024,
+            "detected_language": ocr_result.detected_language if ocr_result else "en",
+        }
+
         # 创建生成任务记录
         task = GenerationTask(
             id=uuid.uuid4(),
             user_id=current_user.id,
             image_id=request.image_id,
-            original_image_url="",  # 从 image_id 查询
+            original_image_url=image.original_url,
+            ocr_data=ocr_data,
             edit_data=[block.model_dump() for block in request.edit_blocks],
             quality=GenerationQuality(request.quality.value),
             status=GenerationStatus.PENDING,
@@ -188,8 +206,8 @@ class GenerationService:
             user_id=user_id,
             credit_account_id=credit_account.id,
             amount=-amount,
-            type=TransactionType.spend,
-            source=TransactionSource.register,  # TODO: 添加 generation source
+            type=CreditTransactionType.spend,
+            source=CreditSourceType.generation,
             ref_id=ref_id,
             description=f"AI image generation",
             balance_after=credit_account.balance,
@@ -215,8 +233,8 @@ class GenerationService:
             user_id=user_id,
             credit_account_id=credit_account.id,
             amount=amount,
-            type=TransactionType.earn,
-            source=TransactionSource.refund,
+            type=CreditTransactionType.earn,
+            source=CreditSourceType.refund,
             ref_id=ref_id,
             description="Refund for cancelled/failed generation",
             balance_after=credit_account.balance,

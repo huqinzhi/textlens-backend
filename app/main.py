@@ -4,6 +4,7 @@ TextLens FastAPI 应用主入口
 负责创建 FastAPI 应用实例，注册所有路由、中间件和异常处理器。
 """
 
+import redis.asyncio as redis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -26,13 +27,19 @@ async def lifespan(app: FastAPI):
     """
     应用生命周期管理器
 
-    在应用启动时执行初始化操作（创建数据库表等），
+    在应用启动时执行初始化操作（创建数据库表、初始化 Redis 等），
     在应用关闭时执行资源清理操作。
     """
     # 启动时：初始化数据库连接、创建表
     await create_tables()
+
+    # 初始化 Redis 连接并挂载到 app.state（供速率限制等中间件使用）
+    app.state.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
     yield
-    # 关闭时：释放资源
+
+    # 关闭时：释放 Redis 连接
+    await app.state.redis.close()
 
 
 def create_application() -> FastAPI:

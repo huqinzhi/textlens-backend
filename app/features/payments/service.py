@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.exceptions import ValidationError, NotFoundError, ExternalServiceError
 from app.core.constants import CREDIT_PACKAGES
-from app.db.models.credit import CreditAccount, CreditTransaction, TransactionType, TransactionSource
+from app.db.models.credit import CreditAccount, CreditTransaction
+from app.core.constants import CreditTransactionType, CreditSourceType
 from app.db.models.payment import PurchaseRecord, PaymentProvider, PaymentStatus
 from app.schemas.payment import (
     CreateCheckoutResponse,
@@ -134,8 +135,8 @@ class PaymentService:
             user_id=current_user.id,
             credit_account_id=credit_account.id,
             amount=credits,
-            type=TransactionType.earn,
-            source=TransactionSource.purchase,
+            type=CreditTransactionType.earn,
+            source=CreditSourceType.purchase,
             ref_id=transaction_id,
             description=f"IAP purchase: {package['name']} (+{credits} credits)",
             balance_after=credit_account.balance,
@@ -257,8 +258,8 @@ class PaymentService:
                         user_id=purchase.user_id,
                         credit_account_id=credit_account.id,
                         amount=credits,
-                        type=TransactionType.earn,
-                        source=TransactionSource.purchase,
+                        type=CreditTransactionType.earn,
+                        source=CreditSourceType.purchase,
                         ref_id=session_id,
                         description=f"Stripe purchase: +{credits} credits",
                         balance_after=credit_account.balance,

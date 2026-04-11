@@ -14,9 +14,11 @@ class UserRegisterRequest(BaseModel):
 
     [email] 邮箱地址
     [password] 密码，至少8位
+    [username] 用户名（可选）
     [age_verified] 年龄验证（COPPA合规，13岁以上）
     [terms_accepted] 是否同意用户协议
     [privacy_accepted] 是否同意隐私政策
+    [invite_code] 邀请码（可选，用于邀请好友奖励）
     """
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=100)
@@ -24,6 +26,7 @@ class UserRegisterRequest(BaseModel):
     age_verified: bool
     terms_accepted: bool
     privacy_accepted: bool
+    invite_code: Optional[str] = Field(None, max_length=20, description="邀请码")
 
 
 class UserLoginRequest(BaseModel):

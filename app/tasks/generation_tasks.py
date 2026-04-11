@@ -1,6 +1,6 @@
 """
 AI 图片生成 Celery 任务
-处理 GPT-4o 图片编辑的异步任务：下载原图、调用 API、上传结果、更新状态
+处理 GPT-4o / Stability AI 图片编辑的异步任务：下载原图、调用 API、上传结果、更新状态
 """
 import base64
 import logging
@@ -11,8 +11,10 @@ from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.db.models.image import GenerationTask
 from app.external.openai_api import OpenAIClient
+from app.external.stability_api import StabilityAIClient
 from app.external.s3_client import S3Client
 from app.core.constants import TaskStatus
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,7 @@ class GenerationTaskBase(Task):
 
     _db: Session = None
     _openai_client: OpenAIClient = None
+    _stability_client: StabilityAIClient = None
     _s3_client: S3Client = None
 
     @property
@@ -42,6 +45,13 @@ class GenerationTaskBase(Task):
         if self._openai_client is None:
             self._openai_client = OpenAIClient()
         return self._openai_client
+
+    @property
+    def stability_client(self) -> StabilityAIClient:
+        """懒加载 Stability AI 客户端"""
+        if self._stability_client is None:
+            self._stability_client = StabilityAIClient()
+        return self._stability_client
 
     @property
     def s3_client(self) -> S3Client:
@@ -93,7 +103,7 @@ def process_generation(self, task_id: str) -> dict:
 
     try:
         result_url = asyncio.get_event_loop().run_until_complete(
-            _execute_generation(task, self.openai_client, self.s3_client)
+            _execute_generation(task, self.openai_client, self.stability_client, self.s3_client)
         )
 
         # 更新任务状态为完成
@@ -125,13 +135,17 @@ def process_generation(self, task_id: str) -> dict:
 async def _execute_generation(
     task: GenerationTask,
     openai_client: OpenAIClient,
+    stability_client: StabilityAIClient,
     s3_client: S3Client,
 ) -> str:
     """
     执行图片生成的核心异步逻辑
 
+    根据配置选择 OpenAI 或 Stability AI 作为图片生成 provider。
+
     [task] 数据库中的生成任务记录
     [openai_client] OpenAI API 客户端
+    [stability_client] Stability AI 客户端
     [s3_client] S3 存储客户端
     返回生成图片的 S3 URL
     """
@@ -139,20 +153,50 @@ async def _execute_generation(
     original_bytes = await s3_client.download(task.original_image_url)
 
     # 从任务数据中提取 OCR 文字块和编辑指令
-    ocr_blocks = task.ocr_data.get("text_blocks", []) if task.ocr_data else []
+    ocr_data = task.ocr_data or {}
+    ocr_blocks = ocr_data.get("text_blocks", [])
     edit_blocks = task.edit_data if task.edit_data else []
 
-    # 构建 GPT-4o 提示词
-    prompt = await openai_client.generate_edit_prompt(ocr_blocks, edit_blocks)
+    # 提取图片尺寸和语言信息
+    image_width = ocr_data.get("image_width", 1024)
+    image_height = ocr_data.get("image_height", 1024)
+    detected_language = ocr_data.get("detected_language", "en")
 
-    # 调用 GPT-4o 执行图片编辑
-    quality = task.quality.value if hasattr(task.quality, "value") else str(task.quality)
-    result_b64 = await openai_client.edit_image_with_text(
-        original_image_url=task.original_image_url,
-        original_image_bytes=original_bytes,
-        prompt=prompt,
-        quality=quality,
-    )
+    # 根据配置选择图片生成 provider
+    provider = settings.IMAGE_GENERATION_PROVIDER.lower()
+
+    if provider == "stability" and stability_client.api_key:
+        # 使用 Stability AI 生成
+        logger.info(f"[Generation] Using Stability AI provider for task: {task.id}")
+
+        # 构建 Stability AI 提示词
+        prompt = _build_stability_prompt(ocr_blocks, edit_blocks, image_width, image_height, detected_language)
+
+        result_b64 = await stability_client.edit_image(
+            image_bytes=original_bytes,
+            prompt=prompt,
+        )
+    else:
+        # 使用 OpenAI GPT-4o 生成（默认）
+        logger.info(f"[Generation] Using OpenAI provider for task: {task.id}")
+
+        # 构建 GPT-4o 提示词（包含详细的风格、位置、尺寸约束）
+        prompt = await openai_client.generate_edit_prompt(
+            ocr_blocks=ocr_blocks,
+            edit_blocks=edit_blocks,
+            image_width=image_width,
+            image_height=image_height,
+            detected_language=detected_language,
+        )
+
+        # 调用 GPT-4o 执行图片编辑
+        quality = task.quality.value if hasattr(task.quality, "value") else str(task.quality)
+        result_b64 = await openai_client.edit_image_with_text(
+            original_image_url=task.original_image_url,
+            original_image_bytes=original_bytes,
+            prompt=prompt,
+            quality=quality,
+        )
 
     # 将 base64 结果解码为字节
     result_bytes = base64.b64decode(result_b64)
@@ -163,6 +207,81 @@ async def _execute_generation(
     return result_url
 
 
+def _build_stability_prompt(
+    ocr_blocks: list[dict],
+    edit_blocks: list[dict],
+    image_width: int,
+    image_height: int,
+    detected_language: str,
+) -> str:
+    """
+    构建 Stability AI 图片编辑提示词
+
+    将 OCR 文字块和编辑指令转化为 Stability AI 专用的提示词格式。
+    Stability AI 不支持直接传入图片编辑，需要在提示词中描述期望的修改。
+
+    [ocr_blocks] 原始 OCR 识别文字块列表
+    [edit_blocks] 用户编辑后的文字块列表
+    [image_width] 图片宽度
+    [image_height] 图片高度
+    [detected_language] 检测到的文字语言
+    返回 Stability AI 格式的提示词
+    """
+    from app.core.constants import GENERATION_PROMPT_TEMPLATE
+
+    # 构建原文 → 文字块数据的映射
+    ocr_map = {b.get("id"): b for b in ocr_blocks}
+
+    # 构建替换指令列表
+    regions_list = []
+
+    for edit in edit_blocks:
+        block_id = edit.get("id") or edit.get("block_id")
+        new_text = edit.get("new_text", "").strip()
+        original_text = edit.get("original_text", "")
+
+        if not original_text and block_id and block_id in ocr_map:
+            original_text = ocr_map[block_id].get("text", "")
+
+        if not new_text:
+            continue
+
+        block_info = ocr_map.get(block_id, {})
+        x = block_info.get("x", 0.0)
+        y = block_info.get("y", 0.0)
+        width = block_info.get("width", 0.0)
+        height = block_info.get("height", 0.0)
+
+        abs_x = int(x * image_width)
+        abs_y = int(y * image_height)
+        abs_width = int(width * image_width)
+        abs_height = int(height * image_height)
+
+        region_desc = f"""[{len(regions_list) + 1}] Replace text "{original_text}" with "{new_text}" at position ({abs_x},{abs_y}) with size {abs_width}x{abs_height}px. Keep the same font style, size, color, and position."""
+        regions_list.append(region_desc)
+
+    if not regions_list:
+        return "Keep the image exactly as is."
+
+    regions_text = "\n".join(regions_list)
+
+    # Stability AI 提示词格式
+    prompt = f"""Edit the text in this image while preserving the original visual style exactly.
+Image dimensions: {image_width}x{image_height} pixels, Language: {detected_language}
+
+Text modifications:
+{regions_text}
+
+Important requirements:
+- Replace ONLY the specified text, keep everything else unchanged
+- Match the original font style, size, color, and position precisely
+- Preserve lighting, shadows, and effects on the text
+- Seamless integration with background, no artifacts
+- Photorealistic, natural looking result"""
+
+    return prompt
+
+
 def _refund_credits(db: Session, task: GenerationTask) -> None:
     """
     任务失败时退还已扣除的积分
@@ -170,7 +289,8 @@ def _refund_credits(db: Session, task: GenerationTask) -> None:
     [db] 数据库会话
     [task] 失败的生成任务记录
     """
-    from app.db.models.credit import CreditAccount, CreditTransaction, TransactionType, TransactionSource
+    from app.db.models.credit import CreditAccount, CreditTransaction
+    from app.core.constants import CreditTransactionType, CreditSourceType
 
     try:
         credit_account = db.query(CreditAccount).filter(
@@ -185,8 +305,8 @@ def _refund_credits(db: Session, task: GenerationTask) -> None:
                 user_id=task.user_id,
                 credit_account_id=credit_account.id,
                 amount=task.credits_cost,
-                type=TransactionType.earn,
-                source=TransactionSource.refund,
+                type=CreditTransactionType.earn,
+                source=CreditSourceType.refund,
                 ref_id=str(task.id),
                 description=f"Refund for failed generation task {task.id}",
                 balance_after=credit_account.balance,

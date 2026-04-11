@@ -96,3 +96,41 @@ async def ad_reward(
     """
     credit_service = CreditService(db)
     return await credit_service.ad_reward(current_user, request.ad_unit_id)
+
+
+@router.get("/invite-code")
+async def get_invite_code(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    获取用户邀请码接口
+
+    返回当前用户的专属邀请码和邀请链接。
+    如果用户还没有邀请码，会自动生成一个。
+
+    [current_user] 当前登录用户
+    [db] 数据库会话
+    返回 包含 invite_code 和 invite_url 的字典
+    """
+    credit_service = CreditService(db)
+    return credit_service.get_invite_code(current_user)
+
+
+@router.get("/invite-history")
+async def get_invite_history(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    获取用户邀请记录接口
+
+    返回所有通过该用户邀请码注册的好友列表，
+    以及是否已发放邀请奖励。
+
+    [current_user] 当前登录用户
+    [db] 数据库会话
+    返回 被邀请用户列表
+    """
+    credit_service = CreditService(db)
+    return credit_service.get_invite_history(current_user)

@@ -23,6 +23,8 @@ TextLens is an AI-powered image text editing service. The backend provides:
 
 ### Development
 
+如果项目中接口有任何变动，需要同步修改接口文档
+
 ```bash
 # Start all services (API + Celery + Postgres + Redis)
 docker-compose up

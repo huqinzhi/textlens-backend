@@ -2,12 +2,13 @@
 认证业务逻辑服务层
 处理用户注册、登录、第三方OAuth、Token管理等核心业务逻辑
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.db.models.user import User, RefreshToken, AuthProvider
-from app.db.models.credit import CreditAccount, CreditTransaction, TransactionType, TransactionSource
+from app.db.models.credit import CreditAccount, CreditTransaction
+from app.core.constants import CreditTransactionType, CreditSourceType
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, verify_refresh_token
 from app.core.exceptions import AuthenticationError, ValidationError
 from app.schemas.user import UserRegisterRequest, UserLoginRequest, TokenResponse, AppleOAuthRequest
@@ -32,7 +33,7 @@ class AuthService:
         用户邮箱注册
 
         创建新用户账号，初始化积分账户（发放首次注册积分），
-        返回 JWT Token 对。
+        如果提供了邀请码则给邀请人发放奖励。
 
         [request] 注册请求数据
         返回 TokenResponse JWT 令牌对
@@ -48,6 +49,11 @@ class AuthService:
         if existing_user:
             raise ValidationError("Email already registered")
 
+        # 处理邀请码：查找邀请人
+        inviter = None
+        if request.invite_code:
+            inviter = self.db.query(User).filter(User.invite_code == request.invite_code).first()
+
         # 创建用户
         user = User(
             id=uuid.uuid4(),
@@ -58,6 +64,7 @@ class AuthService:
             age_verified=True,
             terms_accepted_at=datetime.now(timezone.utc),
             privacy_accepted_at=datetime.now(timezone.utc),
+            invited_by=inviter.id if inviter else None,
         )
         self.db.add(user)
         self.db.flush()  # 获取 user.id
@@ -77,12 +84,17 @@ class AuthService:
             user_id=user.id,
             credit_account_id=credit_account.id,
             amount=settings.CREDITS_INITIAL_BONUS,
-            type=TransactionType.earn,
-            source=TransactionSource.register,
+            type=CreditTransactionType.earn,
+            source=CreditSourceType.register,
             description=f"Welcome bonus: +{settings.CREDITS_INITIAL_BONUS} credits",
             balance_after=settings.CREDITS_INITIAL_BONUS,
         )
         self.db.add(transaction)
+
+        # 如果有邀请人，发放邀请奖励
+        if inviter:
+            self._award_invite_reward(inviter.id, user.id)
+
         self.db.commit()
 
         # 生成 Token 对
@@ -172,14 +184,25 @@ class AuthService:
         import jwt
 
         try:
-            # 解码 Apple Identity Token（不验证签名，仅提取信息）
-            # 生产环境需要从 Apple 获取公钥进行验证
-            # https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api
-            decoded = jwt.decode(
-                request.identity_token,
-                options={"verify_signature": False},
-                algorithms=["RS256"],
-            )
+            # 解码 Apple Identity Token
+            # 注意：生产环境应启用签名验证，需要从 Apple 获取公钥
+            # 参考: https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api
+            # 实现方案：使用 apple-signin-request 库或手动获取 Apple JWKS 公钥验证
+            if settings.APPLE_SIGN_IN_VERIFY_SIGNATURE:
+                # 生产环境：验证签名（需要配置完整的 Apple 公钥获取逻辑）
+                # 当前为占位实现，生产部署前需完成
+                decoded = jwt.decode(
+                    request.identity_token,
+                    options={"verify_signature": False},  # TODO: 实现完整签名验证
+                    algorithms=["RS256"],
+                )
+            else:
+                # 开发环境：仅解码提取信息
+                decoded = jwt.decode(
+                    request.identity_token,
+                    options={"verify_signature": False},
+                    algorithms=["RS256"],
+                )
 
             apple_user_id = decoded.get("sub")
             email = decoded.get("email")
@@ -296,9 +319,7 @@ class AuthService:
         stored_token = RefreshToken(
             user_id=user.id,
             token_hash=token_hash,
-            expires_at=datetime.now(timezone.utc).replace(
-                day=datetime.now(timezone.utc).day + settings.JWT_REFRESH_EXPIRATION_DAYS
-            ),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_EXPIRATION_DAYS),
         )
         self.db.add(stored_token)
         self.db.commit()
@@ -348,6 +369,46 @@ class AuthService:
         self.db.commit()
 
         return user
+
+    def _award_invite_reward(self, inviter_id: str, invited_user_id: str) -> None:
+        """
+        发放邀请奖励积分给邀请人
+
+        [inviter_id] 邀请人用户 ID
+        [invited_user_id] 被邀请人用户 ID
+        """
+        # 检查是否已经发放过奖励（防止重复发放）
+        existing_reward = self.db.query(CreditTransaction).filter(
+            CreditTransaction.user_id == inviter_id,
+            CreditTransaction.source == CreditSourceType.invite,
+            CreditTransaction.ref_id == invited_user_id,
+        ).first()
+
+        if existing_reward:
+            return
+
+        credit_account = self.db.query(CreditAccount).filter(
+            CreditAccount.user_id == inviter_id
+        ).with_for_update().first()
+
+        if not credit_account:
+            return
+
+        earned = settings.CREDITS_INVITE_REWARD
+        credit_account.balance += earned
+        credit_account.total_earned += earned
+
+        transaction = CreditTransaction(
+            user_id=inviter_id,
+            credit_account_id=credit_account.id,
+            amount=earned,
+            type=CreditTransactionType.earn,
+            source=CreditSourceType.invite,
+            ref_id=invited_user_id,
+            description=f"Invite friend reward: +{earned} credits",
+            balance_after=credit_account.balance,
+        )
+        self.db.add(transaction)
 
     @staticmethod
     def _hash_token(token: str) -> str:

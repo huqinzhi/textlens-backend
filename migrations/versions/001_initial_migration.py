@@ -71,7 +71,7 @@ def upgrade() -> None:
     op.create_table(
         'credit_accounts',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id'), unique=True, nullable=False),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), unique=True, nullable=False),
         sa.Column('balance', sa.Integer(), default=0, nullable=False),
         sa.Column('total_earned', sa.Integer(), default=0, nullable=False),
         sa.Column('total_spent', sa.Integer(), default=0, nullable=False),
@@ -83,7 +83,7 @@ def upgrade() -> None:
     op.create_table(
         'credit_transactions',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
         sa.Column('credit_account_id', sa.Integer(), sa.ForeignKey('credit_accounts.id'), nullable=False),
         sa.Column('amount', sa.Integer(), nullable=False),
         sa.Column('type', postgresql.ENUM('earn', 'spend', 'refund', name='transactiontype', create_type=False), nullable=False),
@@ -99,7 +99,7 @@ def upgrade() -> None:
     op.create_table(
         'daily_free_usage',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
         sa.Column('date', sa.Date(), nullable=False),
         sa.Column('used_count', sa.Integer(), default=0, nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),

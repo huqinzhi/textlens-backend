@@ -81,6 +81,12 @@ class User(Base):
     # 最后登录时间
     last_login_at = Column(DateTime(timezone=True), nullable=True)
 
+    # 邀请码（用户专属邀请链接）
+    invite_code = Column(String(20), unique=True, nullable=True, index=True)
+
+    # 邀请人 ID（记录是谁推荐注册）
+    invited_by = Column(UUID(as_uuid=True), nullable=True)
+
     # 关联关系
     credit_account = relationship("CreditAccount", back_populates="user", uselist=False)
     credit_transactions = relationship("CreditTransaction", back_populates="user")

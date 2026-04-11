@@ -11,6 +11,7 @@ from app.config import settings
 from app.core.exceptions import ExternalServiceError, ValidationError
 from app.db.models.image import Image, OCRResult, ImageStatus
 from app.external.google_vision import GoogleVisionClient
+from app.external.ocr_space import OCRSpaceClient
 from app.external.s3_client import S3Client
 from app.schemas.image import OCRResponse, TextBlock
 
@@ -20,13 +21,18 @@ class OCRService:
     OCR 识别服务类
 
     编排图片上传、OCR识别、结果存储的完整流程。
+    支持 Google Vision 和 OCR.space 两种 OCR 引擎。
     [db] SQLAlchemy 数据库会话
     """
 
     def __init__(self, db: Session):
         self.db = db
-        self.vision_client = GoogleVisionClient()
         self.s3_client = S3Client()
+        # 根据配置选择 OCR 引擎
+        if settings.OCR_PROVIDER == "google_vision":
+            self.ocr_client = GoogleVisionClient()
+        else:
+            self.ocr_client = OCRSpaceClient()
 
     async def recognize(self, file: UploadFile, current_user) -> OCRResponse:
         """
@@ -50,12 +56,13 @@ class OCRService:
             raise ValidationError(f"File size exceeds {settings.IMAGE_MAX_SIZE_MB}MB limit")
 
         # 上传图片到 S3/R2
-        image_key = f"uploads/{current_user.id}/{uuid.uuid4()}/{file.filename}"
         try:
+            file_ext = file.content_type.split("/")[-1] if "/" in file.content_type else "jpg"
             image_url = await self.s3_client.upload(
-                content=file_content,
-                key=image_key,
+                file_bytes=file_content,
                 content_type=file.content_type,
+                folder=f"uploads/{current_user.id}",
+                file_extension=file_ext,
             )
         except Exception as e:
             raise ExternalServiceError("S3", str(e))
@@ -72,26 +79,27 @@ class OCRService:
         self.db.add(image)
         self.db.flush()
 
-        # 调用 Google Vision OCR
+        # 调用 OCR 引擎
         try:
-            vision_result = await self.vision_client.detect_text(file_content)
+            ocr_result = await self.ocr_client.detect_text_from_bytes(file_content)
         except Exception as e:
             image.status = ImageStatus.OCR_FAILED
             self.db.commit()
-            raise ExternalServiceError("Google Vision", str(e))
+            raise ExternalServiceError("OCR", str(e))
 
         # 解析 OCR 结果为标准格式
-        text_blocks = self._parse_vision_result(vision_result)
+        text_blocks = self._parse_ocr_result(ocr_result)
         processing_time_ms = int((time.time() - start_time) * 1000)
 
         # 存储 OCR 结果
-        ocr_result = OCRResult(
+        ocr_record = OCRResult(
             image_id=image.id,
-            raw_data=vision_result,
+            raw_data=ocr_result,
             text_blocks=[block.model_dump() for block in text_blocks],
+            detected_language=self._detect_language(ocr_result),
             processing_time_ms=processing_time_ms,
         )
-        self.db.add(ocr_result)
+        self.db.add(ocr_record)
 
         image.status = ImageStatus.OCR_DONE
         self.db.commit()
@@ -100,22 +108,22 @@ class OCRService:
             image_id=str(image.id),
             image_url=image_url,
             text_blocks=text_blocks,
-            detected_language=self._detect_language(vision_result),
+            detected_language=self._detect_language(ocr_result),
             processing_time_ms=processing_time_ms,
         )
 
-    def _parse_vision_result(self, vision_result: dict) -> list[TextBlock]:
+    def _parse_ocr_result(self, ocr_result: dict) -> list[TextBlock]:
         """
-        将 Google Vision API 原始结果解析为标准 TextBlock 列表
+        将 OCR API 原始结果解析为标准 TextBlock 列表
 
         提取每个文字区域的文字内容、坐标、置信度等信息，
         坐标统一归一化为相对图片尺寸的比例值（0-1范围）。
 
-        [vision_result] Google Vision API 原始响应数据（包含 raw_text, text_blocks, confidence）
+        [ocr_result] OCR API 原始响应数据（包含 raw_text, text_blocks, confidence）
         返回 List[TextBlock] 标准化文字块列表
         """
         text_blocks = []
-        blocks_data = vision_result.get("text_blocks", [])
+        blocks_data = ocr_result.get("text_blocks", [])
 
         for i, block_data in enumerate(blocks_data):
             text_block = TextBlock(
@@ -131,15 +139,15 @@ class OCRService:
 
         return text_blocks
 
-    def _detect_language(self, vision_result: dict) -> str:
+    def _detect_language(self, ocr_result: dict) -> str:
         """
-        从 Vision API 结果中提取检测到的主要语言
+        从 OCR 结果中提取检测到的主要语言
 
-        [vision_result] Google Vision API 原始响应数据
+        [ocr_result] OCR API 原始响应数据
         返回 语言代码字符串（如 "en", "zh", "ja"）
         """
-        # 尝试从 fullTextAnnotation 获取语言信息
-        full_text = vision_result.get("full_text_annotation", {})
+        # 尝试从 fullTextAnnotation 获取语言信息（Google Vision）
+        full_text = ocr_result.get("full_text_annotation", {})
         if full_text:
             pages = full_text.get("pages", [])
             if pages:
@@ -156,7 +164,7 @@ class OCRService:
                                     return languages[0].get("languageCode", "en")
 
         # 回退：从原始文本推断语言（简单实现）
-        raw_text = vision_result.get("raw_text", "")
+        raw_text = ocr_result.get("raw_text", "")
         if raw_text:
             # 简单语言检测：检查是否包含中文
             for char in raw_text:

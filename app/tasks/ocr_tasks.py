@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
-from app.db.models.image import Image, OCRResult
+from app.db.models.image import Image, OCRResult, ImageStatus
 from app.external.google_vision import GoogleVisionClient
 from app.external.s3_client import S3Client
 
@@ -91,7 +91,7 @@ def process_ocr(self, image_id: str) -> dict:
         self.db.add(ocr_result)
 
         # 更新图片状态
-        image.status = "processed"
+        image.status = ImageStatus.OCR_DONE
         self.db.commit()
 
         logger.info(f"[OCR] Completed for image: {image_id}, blocks: {len(result.get('text_blocks', []))}")
@@ -107,7 +107,7 @@ def process_ocr(self, image_id: str) -> dict:
         try:
             self.retry(exc=exc)
         except self.MaxRetriesExceededError:
-            image.status = "failed"
+            image.status = ImageStatus.OCR_FAILED
             self.db.commit()
             return {"status": "failed", "error": str(exc)}
 
@@ -127,10 +127,10 @@ async def _execute_ocr(
     """
     # 优先用 URL 识别（无需下载），降级到下载字节后识别
     try:
-        result = await vision_client.detect_text(image.url)
+        result = await vision_client.detect_text(image.original_url)
     except Exception:
         # URL 识别失败时下载图片再识别
-        image_bytes = await s3_client.download(image.url)
+        image_bytes = await s3_client.download(image.original_url)
         result = await vision_client.detect_text_from_bytes(image_bytes)
 
     return result

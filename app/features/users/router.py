@@ -67,3 +67,22 @@ async def get_user_credits(
     """
     user_service = UserService(db)
     return await user_service.get_profile(current_user)
+
+
+@router.get("/export-data")
+async def export_user_data(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    导出用户所有数据接口（GDPR 合规）
+
+    返回用户的所有个人信息、积分数据、OCR 记录和生成历史。
+    用于用户下载自己的数据副本。
+
+    [current_user] 当前登录用户
+    [db] 数据库会话
+    返回 包含用户所有数据的字典
+    """
+    user_service = UserService(db)
+    return await user_service.export_user_data(current_user)

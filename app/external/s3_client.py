@@ -1,10 +1,10 @@
 """
 S3/Cloudflare R2 对象存储客户端封装
-负责图片文件的上传、下载、删除操作
+负责图片文件的上传、下载、删除操作（异步实现）
 """
 import uuid
 from typing import Optional
-import boto3
+import aioboto3
 from botocore.exceptions import ClientError
 
 from app.config import settings
@@ -13,16 +13,14 @@ from app.core.exceptions import ExternalServiceError
 
 class S3Client:
     """
-    S3/R2 对象存储客户端
+    S3/R2 对象存储客户端（异步实现）
 
     兼容 AWS S3 和 Cloudflare R2（S3 兼容协议），
     提供图片上传、URL 生成和文件删除功能。
     """
 
     def __init__(self):
-        self.client = boto3.client(
-            "s3",
-            endpoint_url=settings.S3_ENDPOINT_URL,
+        self.session = aioboto3.Session(
             aws_access_key_id=settings.S3_ACCESS_KEY,
             aws_secret_access_key=settings.S3_SECRET_KEY,
             region_name=settings.S3_REGION,
@@ -37,7 +35,7 @@ class S3Client:
         file_extension: str = "jpg",
     ) -> str:
         """
-        上传文件到 S3/R2 存储桶
+        异步上传文件到 S3/R2 存储桶
 
         生成唯一文件名后上传，返回可公开访问的 URL。
 
@@ -47,18 +45,20 @@ class S3Client:
         [file_extension] 文件扩展名
         返回文件的公开访问 URL
         """
-        # 生成唯一文件名
         file_key = f"{folder}/{uuid.uuid4().hex}.{file_extension}"
 
         try:
-            self.client.put_object(
-                Bucket=self.bucket,
-                Key=file_key,
-                Body=file_bytes,
-                ContentType=content_type,
-                # 公开读取权限
-                ACL="public-read" if not settings.S3_ENDPOINT_URL else None,
-            )
+            async with self.session.client(
+                "s3",
+                endpoint_url=settings.S3_ENDPOINT_URL,
+            ) as client:
+                await client.put_object(
+                    Bucket=self.bucket,
+                    Key=file_key,
+                    Body=file_bytes,
+                    ContentType=content_type,
+                    ACL="public-read" if not settings.S3_ENDPOINT_URL else None,
+                )
         except ClientError as e:
             raise ExternalServiceError(f"S3 upload failed: {e}")
 
@@ -76,7 +76,7 @@ class S3Client:
 
     async def upload_image(self, image_bytes: bytes, content_type: str = "image/png") -> str:
         """
-        上传图片文件到 uploads 目录
+        异步上传图片文件到 uploads 目录
 
         [image_bytes] 图片字节数据
         [content_type] 图片 MIME 类型，默认 image/png
@@ -92,7 +92,7 @@ class S3Client:
 
     async def upload_result(self, image_bytes: bytes, content_type: str = "image/png") -> str:
         """
-        上传 AI 生成结果图片到 results 目录
+        异步上传 AI 生成结果图片到 results 目录
 
         [image_bytes] 生成图片字节数据
         [content_type] 图片 MIME 类型，默认 image/png
@@ -108,7 +108,7 @@ class S3Client:
 
     async def download(self, url: str) -> bytes:
         """
-        从 S3/R2 下载文件字节数据
+        异步从 S3/R2 下载文件字节数据
 
         根据 URL 提取文件 Key 后下载。
 
@@ -118,21 +118,29 @@ class S3Client:
         file_key = self._extract_key_from_url(url)
 
         try:
-            response = self.client.get_object(Bucket=self.bucket, Key=file_key)
-            return response["Body"].read()
+            async with self.session.client(
+                "s3",
+                endpoint_url=settings.S3_ENDPOINT_URL,
+            ) as client:
+                response = await client.get_object(Bucket=self.bucket, Key=file_key)
+                return await response["Body"].read()
         except ClientError as e:
             raise ExternalServiceError(f"S3 download failed: {e}")
 
     async def delete(self, url: str) -> None:
         """
-        从 S3/R2 删除文件
+        异步从 S3/R2 删除文件
 
         [url] 要删除的文件公开访问 URL
         """
         file_key = self._extract_key_from_url(url)
 
         try:
-            self.client.delete_object(Bucket=self.bucket, Key=file_key)
+            async with self.session.client(
+                "s3",
+                endpoint_url=settings.S3_ENDPOINT_URL,
+            ) as client:
+                await client.delete_object(Bucket=self.bucket, Key=file_key)
         except ClientError as e:
             raise ExternalServiceError(f"S3 delete failed: {e}")
 
@@ -160,9 +168,9 @@ class S3Client:
 
         return path
 
-    def generate_presigned_url(self, url: str, expires_in: int = 3600) -> str:
+    async def generate_presigned_url(self, url: str, expires_in: int = 3600) -> str:
         """
-        生成预签名 URL（用于私有文件临时访问）
+        异步生成预签名 URL（用于私有文件临时访问）
 
         [url] 文件的存储 URL
         [expires_in] 有效期（秒），默认 1 小时
@@ -171,11 +179,15 @@ class S3Client:
         file_key = self._extract_key_from_url(url)
 
         try:
-            presigned_url = self.client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self.bucket, "Key": file_key},
-                ExpiresIn=expires_in,
-            )
-            return presigned_url
+            async with self.session.client(
+                "s3",
+                endpoint_url=settings.S3_ENDPOINT_URL,
+            ) as client:
+                presigned_url = await client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self.bucket, "Key": file_key},
+                    ExpiresIn=expires_in,
+                )
+                return presigned_url
         except ClientError as e:
             raise ExternalServiceError(f"Failed to generate presigned URL: {e}")

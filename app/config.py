@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     APPLE_TEAM_ID: Optional[str] = None
     APPLE_KEY_ID: Optional[str] = None
     APPLE_PRIVATE_KEY: Optional[str] = None
+    APPLE_SIGN_IN_VERIFY_SIGNATURE: bool = False  # 生产环境应启用
 
     # ── Google Cloud Vision API 配置 ──────────────────────────────────
     GOOGLE_CLOUD_PROJECT_ID: Optional[str] = None
@@ -101,8 +102,19 @@ class Settings(BaseSettings):
     # ── Google Vision API 配置 ─────────────────────────────────────────
     GOOGLE_VISION_API_KEY: Optional[str] = None
 
+    # ── OCR.space API 配置 ─────────────────────────────────────────────
+    OCR_SPACE_API_KEY: Optional[str] = None
+    OCR_PROVIDER: str = "ocr_space"  # "google_vision" 或 "ocr_space"
+
     # ── Apple IAP 配置 ─────────────────────────────────────────────────
     APPLE_IAP_SECRET: Optional[str] = None
+
+    # ── Stability AI 生图配置 ───────────────────────────────────────────
+    STABILITY_API_KEY: Optional[str] = None
+    STABILITY_ENGINE_ID: str = "stable-diffusion-xl-1024-v1-0"  # 默认生图引擎
+
+    # ── 图片生成provider配置 ─────────────────────────────────────────────
+    IMAGE_GENERATION_PROVIDER: str = "openai"  # openai 或 stability
 
     # ── Celery 任务队列 URL（别名）─────────────────────────────────────
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
