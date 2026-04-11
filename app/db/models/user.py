@@ -93,6 +93,7 @@ class User(Base):
     generation_tasks = relationship("GenerationTask", back_populates="user")
     daily_free_usages = relationship("DailyFreeUsage", back_populates="user")
     purchase_records = relationship("PurchaseRecord", back_populates="user")
+    images = relationship("Image", back_populates="user")
 
     def __repr__(self):
         return f"<User id={self.id} email={self.email}>"
