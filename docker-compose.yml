@@ -9,11 +9,11 @@ services:
     env_file:
       - .env
     depends_on:
-      - postgres
-      - redis
-    volumes:
-      - ./:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
   celery_worker:
     build: .
@@ -23,6 +23,7 @@ services:
     depends_on:
       - postgres
       - redis
+    restart: unless-stopped
     command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
 
   celery_beat:
@@ -33,19 +34,25 @@ services:
     depends_on:
       - postgres
       - redis
+    restart: unless-stopped
     command: celery -A app.tasks.celery_app beat --loglevel=info
 
   postgres:
     image: postgres:15-alpine
     container_name: textlens-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-textlens}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-textlens123}
-      POSTGRES_DB: ${POSTGRES_DB:-textlens}
+      POSTGRES_USER: textlens_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-textlens_password}
+      POSTGRES_DB: textlens
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U textlens_user -d textlens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -54,6 +61,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   flower:
     build: .
