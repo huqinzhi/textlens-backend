@@ -111,14 +111,24 @@ class OCRService:
         提取每个文字区域的文字内容、坐标、置信度等信息，
         坐标统一归一化为相对图片尺寸的比例值（0-1范围）。
 
-        [vision_result] Google Vision API 原始响应数据
+        [vision_result] Google Vision API 原始响应数据（包含 raw_text, text_blocks, confidence）
         返回 List[TextBlock] 标准化文字块列表
         """
         text_blocks = []
-        # TODO: 解析 Google Vision API 返回的 textAnnotations 或 fullTextAnnotation
-        # 示例结构：
-        # vision_result["textAnnotations"][1:] 为每个单词/段落的识别结果
-        # 每个元素包含 description（文字内容）和 boundingPoly（坐标多边形）
+        blocks_data = vision_result.get("text_blocks", [])
+
+        for i, block_data in enumerate(blocks_data):
+            text_block = TextBlock(
+                id=block_data.get("id", f"block_{i}"),
+                text=block_data.get("text", ""),
+                x=block_data.get("x", 0.0),
+                y=block_data.get("y", 0.0),
+                width=block_data.get("width", 0.0),
+                height=block_data.get("height", 0.0),
+                confidence=block_data.get("confidence", 1.0),
+            )
+            text_blocks.append(text_block)
+
         return text_blocks
 
     def _detect_language(self, vision_result: dict) -> str:
@@ -128,5 +138,33 @@ class OCRService:
         [vision_result] Google Vision API 原始响应数据
         返回 语言代码字符串（如 "en", "zh", "ja"）
         """
-        # TODO: 从 fullTextAnnotation.pages[].property.detectedLanguages 提取
+        # 尝试从 fullTextAnnotation 获取语言信息
+        full_text = vision_result.get("full_text_annotation", {})
+        if full_text:
+            pages = full_text.get("pages", [])
+            if pages:
+                page = pages[0]
+                blocks = page.get("blocks", [])
+                if blocks:
+                    for block in blocks:
+                        paragraphs = block.get("paragraphs", [])
+                        for paragraph in paragraphs:
+                            words = paragraph.get("words", [])
+                            for word in words:
+                                languages = word.get("property", {}).get("detectedLanguages", [])
+                                if languages:
+                                    return languages[0].get("languageCode", "en")
+
+        # 回退：从原始文本推断语言（简单实现）
+        raw_text = vision_result.get("raw_text", "")
+        if raw_text:
+            # 简单语言检测：检查是否包含中文
+            for char in raw_text:
+                if '\u4e00' <= char <= '\u9fff':
+                    return "zh"
+                if '\u3040' <= char <= '\u309f' or '\u30a0' <= char <= '\u30ff':
+                    return "ja"
+                if '\uac00' <= char <= '\ud7af':
+                    return "ko"
+
         return "en"
