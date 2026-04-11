@@ -111,10 +111,13 @@ configure_env() {
         JWT_SECRET=$(openssl rand -base64 32)
     fi
 
-    echo "请输入 OpenAI API Key (sk-...):"
+    echo "请输入 OpenAI API Key (sk-...) - 用于内容审核:"
     read -r OPENAI_API_KEY
 
-    echo "请输入 Stripe Secret Key (sk_test_...):"
+    echo "请输入 Stability AI API Key (sk-...) - 用于图片生成:"
+    read -r STABILITY_API_KEY
+
+    echo "请输入 Stripe Secret Key (sk_test_...) - 可选:"
     read -r STRIPE_SECRET_KEY
 
     # 创建 .env 文件
@@ -145,9 +148,14 @@ JWT_REFRESH_EXPIRATION_DAYS=30
 OCR_SPACE_API_KEY=K85802480388957
 OCR_PROVIDER=ocr_space
 
-# OpenAI
+# OpenAI (用于内容审核)
 OPENAI_API_KEY=${OPENAI_API_KEY}
 OPENAI_MODEL=gpt-4o
+
+# Stability AI (用于图片生成)
+STABILITY_API_KEY=${STABILITY_API_KEY}
+STABILITY_ENGINE_ID=stable-diffusion-xl-1024-v1-0
+IMAGE_GENERATION_PROVIDER=stability
 
 # Stripe
 STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
