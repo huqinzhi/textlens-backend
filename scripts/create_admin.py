@@ -17,13 +17,6 @@ from datetime import datetime
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 重要：先导入所有模型，避免 SQLAlchemy relationship 循环引用问题
-from app.db.models.user import User
-from app.db.models.credit import CreditAccount
-from app.db.models.image import GenerationTask, Image, OCRResult  # noqa
-from app.db.models.payment import PurchaseRecord  # noqa
-from app.db.session import SessionLocal
-
 import bcrypt
 
 
@@ -43,47 +36,44 @@ def create_admin_user():
 
     创建一个邮箱为 admin，密码为 123456 的管理员用户，初始积分 99999
     """
-    # 生成密码哈希
+    from app.db.session import engine
+
     password_hash = hash_password('123456')
+    user_id = str(uuid.uuid4())
+    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
 
-    db = SessionLocal()
-    try:
+    with engine.connect() as conn:
         # 检查是否已存在管理员
-        existing = db.query(User).filter(
-            User.email == 'admin',
-            User.is_admin == True
-        ).first()
-
-        if existing:
+        result = conn.execute(
+            f"SELECT id FROM users WHERE email = 'admin' AND is_admin = true AND deleted_at IS NULL"
+        )
+        if result.fetchone():
             print('管理员已存在，跳过创建')
-            return existing
+            return
 
-        # 创建管理员用户
-        admin = User(
-            id=uuid.uuid4(),
-            email='admin',
-            password_hash=password_hash,
-            username='admin',
-            auth_provider=AuthProvider.EMAIL,
-            is_email_verified=True,
-            is_active=True,
-            is_admin=True,
-            age_verified=True,
-            privacy_accepted_at=datetime.utcnow(),
-            terms_accepted_at=datetime.utcnow()
+        # 直接插入用户
+        conn.execute(
+            f"""
+            INSERT INTO users (
+                id, email, password_hash, username, auth_provider,
+                is_email_verified, is_active, is_admin, age_verified,
+                privacy_accepted_at, terms_accepted_at, created_at, updated_at
+            ) VALUES (
+                '{user_id}', 'admin', '{password_hash}', 'admin', 'email',
+                true, true, true, true,
+                '{now}', '{now}', '{now}', '{now}'
+            )
+            """
         )
-        db.add(admin)
-        db.flush()
 
-        # 创建积分账户
-        credit = CreditAccount(
-            user_id=admin.id,
-            balance=99999,
-            total_earned=99999,
-            total_spent=0
+        # 插入积分账户
+        conn.execute(
+            f"""
+            INSERT INTO credit_accounts (user_id, balance, total_earned, total_spent)
+            VALUES ('{user_id}', 99999, 99999, 0)
+            """
         )
-        db.add(credit)
-        db.commit()
+        conn.commit()
 
         print('=' * 50)
         print('管理员创建成功！')
@@ -92,14 +82,6 @@ def create_admin_user():
         print(f'密码: 123456')
         print(f'积分: 99999')
         print('=' * 50)
-        return admin
-
-    except Exception as e:
-        db.rollback()
-        print(f'创建失败: {e}')
-        raise
-    finally:
-        db.close()
 
 
 if __name__ == '__main__':
