@@ -7,12 +7,11 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.constants import QualityLevel, TaskStatus, QUALITY_CREDITS_MAP, QUALITY_OPENAI_PARAMS, GENERATION_PROMPT_TEMPLATE
-from app.core.exceptions import InsufficientCreditsError, DailyLimitExceededError, NotFoundError, AuthorizationError, ContentModerationError
+from app.core.constants import QualityLevel, TaskStatus, QUALITY_CREDITS_MAP, GENERATION_PROMPT_TEMPLATE
+from app.core.exceptions import InsufficientCreditsError, DailyLimitExceededError, NotFoundError, AuthorizationError
 from app.db.models.image import GenerationTask, GenerationStatus, GenerationQuality
 from app.db.models.credit import CreditAccount, CreditTransaction, DailyFreeUsage
 from app.core.constants import CreditTransactionType, CreditSourceType
-from app.external.openai_api import OpenAIClient
 from app.schemas.image import GenerateRequest, GenerationTaskResponse
 
 
@@ -26,7 +25,6 @@ class GenerationService:
 
     def __init__(self, db: Session):
         self.db = db
-        self.openai_client = OpenAIClient()
 
     async def submit(self, request: GenerateRequest, current_user) -> GenerationTaskResponse:
         """
@@ -60,12 +58,6 @@ class GenerationService:
             if not credit_account or credit_account.balance < credits_cost:
                 current_balance = credit_account.balance if credit_account else 0
                 raise InsufficientCreditsError(required=credits_cost, current=current_balance)
-
-        # 内容审核：检测用户输入的新文字是否违规
-        new_texts = " ".join([block.new_text for block in request.edit_blocks])
-        is_safe = await self.openai_client.moderate_content(new_texts)
-        if not is_safe:
-            raise ContentModerationError()
 
         # 获取原始图片和 OCR 结果
         from app.db.models.image import Image, OCRResult

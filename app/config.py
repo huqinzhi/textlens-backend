@@ -67,11 +67,6 @@ class Settings(BaseSettings):
     GOOGLE_CLOUD_PROJECT_ID: Optional[str] = None
     GOOGLE_CLOUD_CREDENTIALS_JSON: Optional[str] = None
 
-    # ── OpenAI API 配置 ───────────────────────────────────────────────
-    OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4o"
-    OPENAI_MODERATION_MODEL: str = "text-moderation-latest"
-
     # ── Stripe 支付配置 ───────────────────────────────────────────────
     STRIPE_API_KEY: Optional[str] = None
     STRIPE_SECRET_KEY: Optional[str] = None   # 别名，与 STRIPE_API_KEY 等效

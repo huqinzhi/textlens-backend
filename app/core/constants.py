@@ -114,13 +114,6 @@ CREDIT_PACKAGES = {
     "premium": {"name": "Premium Pack", "price_usd": 14.99, "credits": 1800, "bonus": 300},
 }
 
-# ── OpenAI 生图参数映射 ─────────────────────────────────────────────────
-QUALITY_OPENAI_PARAMS = {
-    QualityLevel.LOW: {"size": "512x512", "quality": "standard"},
-    QualityLevel.MEDIUM: {"size": "1024x1024", "quality": "standard"},
-    QualityLevel.HIGH: {"size": "1024x1024", "quality": "hd"},
-}
-
 # ── AI 生图 Prompt 模板 ─────────────────────────────────────────────────
 # 图片文字编辑的核心提示词模板
 # 包含详细的风格、字体、位置等约束，确保修改后的图片与原图保持一致

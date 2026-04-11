@@ -39,9 +39,6 @@ configure_env() {
         JWT_SECRET=$(openssl rand -base64 32)
     fi
 
-    echo "OpenAI API Key (sk-...): 直接回车跳过"
-    read -r OPENAI_API_KEY
-
     echo "Stability AI API Key (sk-...): 直接回车跳过"
     read -r STABILITY_API_KEY
 
@@ -76,11 +73,7 @@ JWT_REFRESH_EXPIRATION_DAYS=30
 OCR_SPACE_API_KEY=K85802480388957
 OCR_PROVIDER=ocr_space
 
-# OpenAI (用于内容审核) - 可留空
-OPENAI_API_KEY=${OPENAI_API_KEY}
-OPENAI_MODEL=gpt-4o
-
-# Stability AI (用于图片生成) - 可留空
+# Stability AI (用于图片生成，内置内容审核)
 STABILITY_API_KEY=${STABILITY_API_KEY}
 STABILITY_ENGINE_ID=stable-diffusion-xl-1024-v1-0
 IMAGE_GENERATION_PROVIDER=stability

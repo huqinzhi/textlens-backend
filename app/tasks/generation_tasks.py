@@ -1,6 +1,6 @@
 """
 AI 图片生成 Celery 任务
-处理 GPT-4o / Stability AI 图片编辑的异步任务：下载原图、调用 API、上传结果、更新状态
+处理 Stability AI 图片编辑的异步任务：下载原图、调用 API、上传结果、更新状态
 """
 import base64
 import logging
@@ -10,11 +10,9 @@ from sqlalchemy.orm import Session
 from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.db.models.image import GenerationTask
-from app.external.openai_api import OpenAIClient
 from app.external.stability_api import StabilityAIClient
 from app.external.s3_client import S3Client
 from app.core.constants import TaskStatus
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +26,6 @@ class GenerationTaskBase(Task):
     """
 
     _db: Session = None
-    _openai_client: OpenAIClient = None
     _stability_client: StabilityAIClient = None
     _s3_client: S3Client = None
 
@@ -38,13 +35,6 @@ class GenerationTaskBase(Task):
         if self._db is None or not self._db.is_active:
             self._db = SessionLocal()
         return self._db
-
-    @property
-    def openai_client(self) -> OpenAIClient:
-        """懒加载 OpenAI 客户端"""
-        if self._openai_client is None:
-            self._openai_client = OpenAIClient()
-        return self._openai_client
 
     @property
     def stability_client(self) -> StabilityAIClient:
@@ -58,6 +48,7 @@ class GenerationTaskBase(Task):
         """懒加载 S3 客户端"""
         if self._s3_client is None:
             self._s3_client = S3Client()
+        return self._s3_client
         return self._s3_client
 
 
@@ -103,7 +94,7 @@ def process_generation(self, task_id: str) -> dict:
 
     try:
         result_url = asyncio.get_event_loop().run_until_complete(
-            _execute_generation(task, self.openai_client, self.stability_client, self.s3_client)
+            _execute_generation(task, self.stability_client, self.s3_client)
         )
 
         # 更新任务状态为完成
@@ -134,17 +125,15 @@ def process_generation(self, task_id: str) -> dict:
 
 async def _execute_generation(
     task: GenerationTask,
-    openai_client: OpenAIClient,
     stability_client: StabilityAIClient,
     s3_client: S3Client,
 ) -> str:
     """
     执行图片生成的核心异步逻辑
 
-    根据配置选择 OpenAI 或 Stability AI 作为图片生成 provider。
+    使用 Stability AI 进行图片编辑。
 
     [task] 数据库中的生成任务记录
-    [openai_client] OpenAI API 客户端
     [stability_client] Stability AI 客户端
     [s3_client] S3 存储客户端
     返回生成图片的 S3 URL
@@ -162,41 +151,16 @@ async def _execute_generation(
     image_height = ocr_data.get("image_height", 1024)
     detected_language = ocr_data.get("detected_language", "en")
 
-    # 根据配置选择图片生成 provider
-    provider = settings.IMAGE_GENERATION_PROVIDER.lower()
+    # 使用 Stability AI 生成
+    logger.info(f"[Generation] Using Stability AI provider for task: {task.id}")
 
-    if provider == "stability" and stability_client.api_key:
-        # 使用 Stability AI 生成
-        logger.info(f"[Generation] Using Stability AI provider for task: {task.id}")
+    # 构建 Stability AI 提示词
+    prompt = _build_stability_prompt(ocr_blocks, edit_blocks, image_width, image_height, detected_language)
 
-        # 构建 Stability AI 提示词
-        prompt = _build_stability_prompt(ocr_blocks, edit_blocks, image_width, image_height, detected_language)
-
-        result_b64 = await stability_client.edit_image(
-            image_bytes=original_bytes,
-            prompt=prompt,
-        )
-    else:
-        # 使用 OpenAI GPT-4o 生成（默认）
-        logger.info(f"[Generation] Using OpenAI provider for task: {task.id}")
-
-        # 构建 GPT-4o 提示词（包含详细的风格、位置、尺寸约束）
-        prompt = await openai_client.generate_edit_prompt(
-            ocr_blocks=ocr_blocks,
-            edit_blocks=edit_blocks,
-            image_width=image_width,
-            image_height=image_height,
-            detected_language=detected_language,
-        )
-
-        # 调用 GPT-4o 执行图片编辑
-        quality = task.quality.value if hasattr(task.quality, "value") else str(task.quality)
-        result_b64 = await openai_client.edit_image_with_text(
-            original_image_url=task.original_image_url,
-            original_image_bytes=original_bytes,
-            prompt=prompt,
-            quality=quality,
-        )
+    result_b64 = await stability_client.edit_image(
+        image_bytes=original_bytes,
+        prompt=prompt,
+    )
 
     # 将 base64 结果解码为字节
     result_bytes = base64.b64decode(result_b64)
