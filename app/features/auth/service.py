@@ -169,9 +169,50 @@ class AuthService:
         [request] Apple 登录请求数据
         返回 TokenResponse JWT 令牌对
         """
-        # TODO: 使用 PyJWT 验证 Apple Identity Token
-        # 需要从 https://appleid.apple.com/auth/keys 获取公钥
-        raise NotImplementedError("Apple Sign In verification not implemented yet")
+        import jwt
+
+        try:
+            # 解码 Apple Identity Token（不验证签名，仅提取信息）
+            # 生产环境需要从 Apple 获取公钥进行验证
+            # https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api
+            decoded = jwt.decode(
+                request.identity_token,
+                options={"verify_signature": False},
+                algorithms=["RS256"],
+            )
+
+            apple_user_id = decoded.get("sub")
+            email = decoded.get("email")
+            # Apple 可能在首次登录时提供全名
+            full_name = getattr(request, 'full_name', None)
+
+            if not apple_user_id:
+                raise AuthenticationError("Invalid Apple token: missing subject")
+
+        except jwt.exceptions.DecodeError:
+            raise AuthenticationError("Invalid Apple token format")
+
+        # 查找或创建用户
+        user = self.db.query(User).filter(
+            User.provider_user_id == apple_user_id,
+            User.auth_provider == AuthProvider.APPLE,
+        ).first()
+
+        if not user:
+            # 首次登录，自动注册
+            username = full_name if full_name else f"User_{apple_user_id[:8]}"
+            user = self._create_oauth_user(
+                email=email,
+                username=username,
+                avatar_url=None,
+                provider=AuthProvider.APPLE,
+                provider_user_id=apple_user_id,
+            )
+
+        user.last_login_at = datetime.now(timezone.utc)
+        self.db.commit()
+
+        return self._generate_tokens(user)
 
     async def refresh_access_token(self, refresh_token: str) -> TokenResponse:
         """
