@@ -27,7 +27,7 @@ google-cloud-vision==3.7.2
 google-auth==2.29.0
 
 # Stability AI (图片生成)
-stability-sdk==0.22.0
+stability-sdk==0.8.6
 
 # Stripe Payment
 stripe==9.9.0
