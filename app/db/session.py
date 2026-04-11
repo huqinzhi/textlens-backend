@@ -41,4 +41,4 @@ async def create_tables():
     在应用启动时调用，确保所有表结构存在。
     """
     from app.db.base import Base
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine, checkfirst=True)
