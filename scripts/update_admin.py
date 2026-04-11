@@ -35,9 +35,9 @@ def update_admin():
     now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
     with engine.connect() as conn:
-        # 查找现有管理员
+        # 查找现有管理员（按邮箱查找）
         result = conn.execute(
-            text("SELECT id FROM users WHERE is_admin = true AND deleted_at IS NULL LIMIT 1")
+            text("SELECT id FROM users WHERE email = 'admin@gmail.com' AND deleted_at IS NULL LIMIT 1")
         )
         row = result.fetchone()
 
@@ -46,17 +46,41 @@ def update_admin():
             conn.execute(
                 text(f"""
                 UPDATE users SET
-                    email = 'admin@gmail.com',
                     password_hash = '{password_hash}',
+                    is_admin = true,
                     updated_at = '{now}'
                 WHERE id = '{row[0]}'
                 """)
             )
+
+            # 更新或创建积分账户
+            credit_result = conn.execute(
+                text(f"SELECT id FROM credit_accounts WHERE user_id = '{row[0]}'")
+            )
+            credit_row = credit_result.fetchone()
+            if credit_row:
+                conn.execute(
+                    text(f"""
+                    UPDATE credit_accounts SET
+                        balance = 99999,
+                        total_earned = 99999
+                    WHERE user_id = '{row[0]}'
+                    """)
+                )
+            else:
+                conn.execute(
+                    text(f"""
+                    INSERT INTO credit_accounts (user_id, balance, total_earned, total_spent)
+                    VALUES ('{row[0]}', 99999, 99999, 0)
+                    """)
+                )
+
             conn.commit()
             print('管理员更新成功！')
             print('=' * 50)
             print(f'邮箱: admin@gmail.com')
             print(f'密码: huqinzhi')
+            print(f'积分: 99999')
             print('=' * 50)
         else:
             print('未找到管理员账户')
