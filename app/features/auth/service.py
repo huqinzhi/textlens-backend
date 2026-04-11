@@ -8,11 +8,21 @@ from sqlalchemy.orm import Session
 
 from app.db.models.user import User, RefreshToken, AuthProvider
 from app.db.models.credit import CreditAccount, CreditTransaction
+from app.db.models.image import GenerationTask, Image, OCRResult  # noqa - 避免 SQLAlchemy relationship 循环引用
+from app.db.models.payment import PurchaseRecord  # noqa - 避免 SQLAlchemy relationship 循环引用
 from app.core.constants import CreditTransactionType, CreditSourceType
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, verify_refresh_token
 from app.core.exceptions import AuthenticationError, ValidationError
-from app.schemas.user import UserRegisterRequest, UserLoginRequest, TokenResponse, AppleOAuthRequest
+from app.schemas.user import (
+    UserRegisterRequest,
+    UserLoginRequest,
+    TokenResponse,
+    AppleOAuthRequest,
+    RegisterCompleteRequest,
+    PasswordResetConfirmV2Request,
+)
 from app.config import settings
+from jose import jwt as jose_jwt, JWTError
 import uuid
 import hashlib
 
@@ -428,3 +438,213 @@ class AuthService:
         [db] 数据库会话
         """
         pass
+
+    # ── 邮箱验证码相关方法 ──────────────────────────────────────────────
+
+    def _get_verification_service(self) -> "VerificationService":
+        """
+        获取验证码服务实例
+
+        返回 VerificationService 验证码服务实例
+        """
+        from app.features.auth.verification_service import VerificationService
+        import redis
+        redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        return VerificationService(redis_client)
+
+    async def send_verification_code(self, email: str, scene: str) -> None:
+        """
+        发送邮箱验证码
+
+        根据场景发送验证码到指定邮箱，并进行前置校验。
+
+        [email] 目标邮箱地址
+        [scene] 验证场景 (register/login/reset_password)
+        """
+        from app.features.auth.verification_service import VerificationService
+        from app.db.models.user import User
+
+        # 前置校验
+        if scene == "register":
+            # 注册场景：检查邮箱是否已注册
+            existing_user = self.db.query(User).filter(User.email == email).first()
+            if existing_user:
+                raise ValidationError("该邮箱已注册，请直接登录")
+        else:
+            # 登录/重置场景：检查邮箱是否存在
+            existing_user = self.db.query(User).filter(User.email == email).first()
+            if not existing_user:
+                raise ValidationError("该邮箱尚未注册")
+
+        # 发送验证码
+        verification_service = self._get_verification_service()
+        verification_service.send_code(email, scene)
+
+    async def verify_code(self, email: str, scene: str, code: str) -> bool:
+        """
+        校验邮箱验证码
+
+        [email] 目标邮箱地址
+        [scene] 验证场景
+        [code] 用户输入的验证码
+        返回 bool 是否验证通过
+        """
+        verification_service = self._get_verification_service()
+        return verification_service.verify_code(email, scene, code)
+
+    def _create_verify_token(self, email: str, scene: str) -> str:
+        """
+        创建验证码验证成功后的临时 Token
+
+        [email] 已验证的邮箱地址
+        [scene] 验证场景
+        返回 str JWT Token
+        """
+        verification_service = self._get_verification_service()
+        return verification_service.create_verify_token(email, scene)
+
+    async def register_with_verified_email(self, request: RegisterCompleteRequest) -> TokenResponse:
+        """
+        使用验证码验证后完成注册
+
+        验证临时 Token，创建用户账号并发放首次注册奖励积分。
+
+        [request] 完成注册请求体
+        返回 TokenResponse JWT 令牌对
+        """
+        from app.features.auth.verification_service import VerificationService
+        from app.db.models.user import User
+
+        verification_service = self._get_verification_service()
+
+        # 验证 Token
+        token_email = verification_service.verify_token(request.verify_token, "register")
+
+        # 再次检查邮箱是否已注册（防止并发）
+        existing_user = self.db.query(User).filter(User.email == token_email).first()
+        if existing_user:
+            raise ValidationError("该邮箱已注册")
+
+        # 验证合规性
+        if not request.age_verified:
+            raise ValidationError("You must be 13 or older to use TextLens (COPPA compliance)")
+        if not request.terms_accepted or not request.privacy_accepted:
+            raise ValidationError("You must accept the Terms of Service and Privacy Policy")
+
+        # 处理邀请码：查找邀请人
+        inviter = None
+        if request.invite_code:
+            inviter = self.db.query(User).filter(User.invite_code == request.invite_code).first()
+
+        # 创建用户
+        user = User(
+            id=uuid.uuid4(),
+            email=token_email,
+            password_hash=hash_password(request.password),
+            username=request.username,
+            auth_provider=AuthProvider.EMAIL,
+            is_email_verified=True,  # 标记邮箱已验证
+            age_verified=True,
+            terms_accepted_at=datetime.now(timezone.utc),
+            privacy_accepted_at=datetime.now(timezone.utc),
+            invited_by=inviter.id if inviter else None,
+        )
+        self.db.add(user)
+        self.db.flush()
+
+        # 初始化积分账户，发放注册奖励积分
+        credit_account = CreditAccount(
+            user_id=user.id,
+            balance=settings.CREDITS_INITIAL_BONUS,
+            total_earned=settings.CREDITS_INITIAL_BONUS,
+            total_spent=0,
+        )
+        self.db.add(credit_account)
+        self.db.flush()
+
+        # 记录积分流水
+        transaction = CreditTransaction(
+            user_id=user.id,
+            credit_account_id=credit_account.id,
+            amount=settings.CREDITS_INITIAL_BONUS,
+            type=CreditTransactionType.earn,
+            source=CreditSourceType.register,
+            description=f"Welcome bonus: +{settings.CREDITS_INITIAL_BONUS} credits",
+            balance_after=settings.CREDITS_INITIAL_BONUS,
+        )
+        self.db.add(transaction)
+
+        # 如果有邀请人，发放邀请奖励
+        if inviter:
+            self._award_invite_reward(inviter.id, user.id)
+
+        self.db.commit()
+
+        # 生成 Token 对
+        return self._generate_tokens(user)
+
+    async def login_with_verified_email(self, email: str) -> TokenResponse:
+        """
+        验证码登录（邮箱已验证，直接登录）
+
+        [email] 已验证的邮箱地址
+        返回 TokenResponse JWT 令牌对
+        """
+        from app.db.models.user import User
+
+        user = self.db.query(User).filter(
+            User.email == email,
+            User.deleted_at.is_(None),
+            User.is_active == True,
+        ).first()
+
+        if not user:
+            raise AuthenticationError("用户不存在或已被注销")
+
+        # 更新最后登录时间
+        user.last_login_at = datetime.now(timezone.utc)
+        self.db.commit()
+
+        return self._generate_tokens(user)
+
+    async def reset_password_with_verified_email(self, request: PasswordResetConfirmV2Request) -> TokenResponse:
+        """
+        使用验证码验证后重置密码
+
+        验证临时 Token，重置用户密码。
+
+        [request] 确认密码重置请求体
+        返回 TokenResponse 重置成功后返回登录令牌
+        """
+        from app.features.auth.verification_service import VerificationService
+        from app.db.models.user import User
+
+        verification_service = self._get_verification_service()
+
+        # 验证 Token
+        try:
+            from app.core.security import verify_access_token
+            payload = verify_access_token(request.verify_token)
+            if not payload.get("verified") or payload.get("scene") != "reset_password":
+                raise AuthenticationError("无效的验证令牌")
+            email = payload.get("sub")
+        except Exception as e:
+            raise AuthenticationError(f"验证令牌无效或已过期: {str(e)}")
+
+        # 获取用户
+        user = self.db.query(User).filter(
+            User.email == email,
+            User.deleted_at.is_(None),
+            User.is_active == True,
+        ).first()
+
+        if not user:
+            raise AuthenticationError("用户不存在或已被注销")
+
+        # 更新密码
+        user.password_hash = hash_password(request.new_password)
+        user.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+
+        # 生成新的 Token 对
+        return self._generate_tokens(user)
