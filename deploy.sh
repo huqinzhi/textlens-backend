@@ -55,7 +55,7 @@ APP_VERSION=1.0.0
 APP_BASE_URL=https://hqzservice.top
 
 # 数据库
-DATABASE_URL=postgresql://textlens_user:${DB_PASSWORD}@db:5432/textlens
+DATABASE_URL=postgresql://textlens_user:${DB_PASSWORD}@postgres:5432/textlens
 
 # Redis
 REDIS_URL=redis://redis:6379/0
@@ -246,7 +246,7 @@ log_info "步骤 6: 等待服务就绪..."
 
 log_info "等待 PostgreSQL..."
 for i in {1..30}; do
-    if sudo docker compose exec -T db pg_isready -U textlens_user -d textlens &>/dev/null; then
+    if sudo docker compose exec -T postgres pg_isready -U textlens_user -d textlens &>/dev/null; then
         log_info "PostgreSQL 已就绪"
         break
     fi
