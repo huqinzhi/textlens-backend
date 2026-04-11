@@ -94,8 +94,8 @@ class AuthService:
             user_id=user.id,
             credit_account_id=credit_account.id,
             amount=settings.CREDITS_INITIAL_BONUS,
-            type=CreditTransactionType.earn,
-            source=CreditSourceType.register,
+            type=CreditTransactionType.EARN,
+            source=CreditSourceType.REGISTER,
             description=f"Welcome bonus: +{settings.CREDITS_INITIAL_BONUS} credits",
             balance_after=settings.CREDITS_INITIAL_BONUS,
         )
@@ -390,7 +390,7 @@ class AuthService:
         # 检查是否已经发放过奖励（防止重复发放）
         existing_reward = self.db.query(CreditTransaction).filter(
             CreditTransaction.user_id == inviter_id,
-            CreditTransaction.source == CreditSourceType.invite,
+            CreditTransaction.source == CreditSourceType.INVITE,
             CreditTransaction.ref_id == invited_user_id,
         ).first()
 
@@ -412,8 +412,8 @@ class AuthService:
             user_id=inviter_id,
             credit_account_id=credit_account.id,
             amount=earned,
-            type=CreditTransactionType.earn,
-            source=CreditSourceType.invite,
+            type=CreditTransactionType.EARN,
+            source=CreditSourceType.INVITE,
             ref_id=invited_user_id,
             description=f"Invite friend reward: +{earned} credits",
             balance_after=credit_account.balance,
@@ -567,8 +567,8 @@ class AuthService:
             user_id=user.id,
             credit_account_id=credit_account.id,
             amount=settings.CREDITS_INITIAL_BONUS,
-            type=CreditTransactionType.earn,
-            source=CreditSourceType.register,
+            type=CreditTransactionType.EARN,
+            source=CreditSourceType.REGISTER,
             description=f"Welcome bonus: +{settings.CREDITS_INITIAL_BONUS} credits",
             balance_after=settings.CREDITS_INITIAL_BONUS,
         )

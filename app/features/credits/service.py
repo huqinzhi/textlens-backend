@@ -102,7 +102,7 @@ class CreditService:
         # 检查今天是否已签到（通过检查今日是否有 daily 来源的积分记录）
         today_checkin = self.db.query(CreditTransaction).filter(
             CreditTransaction.user_id == current_user.id,
-            CreditTransaction.source == CreditSourceType.daily,
+            CreditTransaction.source == CreditSourceType.DAILY,
         ).filter(
             CreditTransaction.created_at >= datetime.combine(today, datetime.min.time())
         ).first()
@@ -128,8 +128,8 @@ class CreditService:
             user_id=current_user.id,
             credit_account_id=credit_account.id,
             amount=earned,
-            type=CreditTransactionType.earn,
-            source=CreditSourceType.daily,
+            type=CreditTransactionType.EARN,
+            source=CreditSourceType.DAILY,
             description=f"Daily check-in reward: +{earned} credits",
             balance_after=credit_account.balance,
         )
@@ -158,7 +158,7 @@ class CreditService:
         # 统计今日已看广告次数
         today_ad_count = self.db.query(CreditTransaction).filter(
             CreditTransaction.user_id == current_user.id,
-            CreditTransaction.source == CreditSourceType.ad,
+            CreditTransaction.source == CreditSourceType.AD,
         ).filter(
             CreditTransaction.created_at >= datetime.combine(today, datetime.min.time())
         ).count()
@@ -180,8 +180,8 @@ class CreditService:
             user_id=current_user.id,
             credit_account_id=credit_account.id,
             amount=earned,
-            type=CreditTransactionType.earn,
-            source=CreditSourceType.ad,
+            type=CreditTransactionType.EARN,
+            source=CreditSourceType.AD,
             ref_id=ad_unit_id,
             description=f"Ad reward: +{earned} credits",
             balance_after=credit_account.balance,
@@ -254,7 +254,7 @@ class CreditService:
             # 查询是否已发放邀请奖励
             reward_transaction = self.db.query(CreditTransaction).filter(
                 CreditTransaction.user_id == current_user.id,
-                CreditTransaction.source == CreditSourceType.invite,
+                CreditTransaction.source == CreditSourceType.INVITE,
                 CreditTransaction.ref_id == str(user.id),
             ).first()
 
@@ -281,7 +281,7 @@ class CreditService:
         # 检查是否已经发放过奖励（防止重复发放）
         existing_reward = self.db.query(CreditTransaction).filter(
             CreditTransaction.user_id == inviter_id,
-            CreditTransaction.source == CreditSourceType.invite,
+            CreditTransaction.source == CreditSourceType.INVITE,
             CreditTransaction.ref_id == invited_user_id,
         ).first()
 
@@ -308,8 +308,8 @@ class CreditService:
             user_id=inviter_id,
             credit_account_id=credit_account.id,
             amount=earned,
-            type=CreditTransactionType.earn,
-            source=CreditSourceType.invite,
+            type=CreditTransactionType.EARN,
+            source=CreditSourceType.INVITE,
             ref_id=invited_user_id,
             description=f"Invite friend reward: +{earned} credits",
             balance_after=credit_account.balance,

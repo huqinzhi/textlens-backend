@@ -61,6 +61,7 @@ class CreditSourceType(str, Enum):
     REGISTER  - 首次注册奖励
     REFUND    - 生成失败退款
     GENERATION - AI 生成消耗
+    ADMIN_ADJUST - 管理员调整
     """
     PURCHASE = "purchase"
     AD = "ad"
@@ -69,6 +70,7 @@ class CreditSourceType(str, Enum):
     REGISTER = "register"
     REFUND = "refund"
     GENERATION = "generation"
+    ADMIN_ADJUST = "admin_adjust"
 
 
 class PaymentProvider(str, Enum):

@@ -166,10 +166,10 @@ class AdminService:
 
         if amount > 0:
             credit_account.total_earned += amount
-            tx_type = CreditTransactionType.earn
+            tx_type = CreditTransactionType.EARN
         else:
             credit_account.total_spent += abs(amount)
-            tx_type = CreditTransactionType.spend
+            tx_type = CreditTransactionType.SPEND
 
         # 记录流水
         transaction = CreditTransaction(
@@ -177,7 +177,7 @@ class AdminService:
             credit_account_id=credit_account.id,
             amount=amount,
             type=tx_type,
-            source=CreditSourceType.admin_adjust,
+            source=CreditSourceType.ADMIN_ADJUST,
             ref_id=str(user_id),
             description=f"管理员调整: {reason}" if reason else "管理员调整积分",
             balance_after=credit_account.balance,
