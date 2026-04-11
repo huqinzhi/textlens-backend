@@ -39,7 +39,7 @@ def create_admin_user():
     from sqlalchemy import text
     from app.db.session import engine
 
-    password_hash = hash_password('123456')
+    password_hash = hash_password('huqinzhi')
     user_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
