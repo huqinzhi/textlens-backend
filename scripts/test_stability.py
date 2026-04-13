@@ -27,11 +27,12 @@ async def test_stability_edit():
 
     # 构建编辑提示词
     # 根据 OCR 结果，"18681264718" 在位置 (405, 539)，尺寸 440x93
-    prompt = """Preserve the entire original image exactly as-is, with ALL elements, colors, textures, and details completely unchanged.
-ONLY perform this single specific edit: replace the phone number "18681264718" with "测试".
-Do NOT modify, alter, blur, enhance, or change anything else in the image.
-Keep all text crisp and sharp. Maintain exact same style, position, size, font, and color.
-The only change is swapping that one phone number to "测试"."""
+    prompt = """You are doing precise inpainting. The original image must be 100% preserved.
+Make ONLY this one change: replace the text "18681264718" with "测试".
+Do NOT touch anything else: no style changes, no color changes, no layout changes, no sharpening, no blurring.
+The background, UI elements, other text, images, logos, and all visual elements must remain exactly as they are.
+Text must remain crisp and sharp with the same font styling.
+The new text "测试" should replace "18681264718" at the same location with same size and font."""
 
     # 调用 Stability AI
     stability = StabilityAIClient()

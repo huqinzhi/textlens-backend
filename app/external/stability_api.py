@@ -113,6 +113,7 @@ class StabilityAIClient:
                     ("init_image", ("image.png", image_bytes, "image/png")),
                     ("text_prompts[0][text]", prompt),
                     ("text_prompts[0][weight]", "1.0"),
+                    ("start_schedule", "0.1"),
                 ]
                 if mask_bytes:
                     files.insert(1, ("mask", ("mask.png", mask_bytes, "image/png")))
