@@ -52,13 +52,16 @@ class S3Client:
                 "s3",
                 endpoint_url=settings.S3_ENDPOINT_URL,
             ) as client:
-                await client.put_object(
-                    Bucket=self.bucket,
-                    Key=file_key,
-                    Body=file_bytes,
-                    ContentType=content_type,
-                    ACL="public-read" if not settings.S3_ENDPOINT_URL else None,
-                )
+                put_kwargs = {
+                    "Bucket": self.bucket,
+                    "Key": file_key,
+                    "Body": file_bytes,
+                    "ContentType": content_type,
+                }
+                # R2 使用 public-read ACL，S3 Endpoint 不设置 ACL
+                if not settings.S3_ENDPOINT_URL:
+                    put_kwargs["ACL"] = "public-read"
+                await client.put_object(**put_kwargs)
         except ClientError as e:
             raise ExternalServiceError(f"S3 upload failed: {e}")
 
