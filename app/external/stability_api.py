@@ -52,14 +52,16 @@ class StabilityAIClient:
             import json
             async with httpx.AsyncClient(timeout=120.0) as client:
                 # 构造 multipart/form-data 请求
-                files = {
-                    "init_image": ("image.png", image_bytes, "image/png"),
-                    "text_prompts": (None, json.dumps([{"text": prompt, "weight": 1.0}]), "application/json"),
-                    "image_strength": (None, "0.35", None),
-                    "output_format": (None, "png", None),
-                }
+                # 使用 list of tuples 格式：(field_name, (filename, content, content_type)) 或 (field_name, content)
+                files = [
+                    ("init_image", ("image.png", image_bytes, "image/png")),
+                    ("text_prompts[0][text]", prompt),
+                    ("text_prompts[0][weight]", "1.0"),
+                    ("image_strength", "0.35"),
+                    ("output_format", "png"),
+                ]
                 if mask_bytes:
-                    files["mask"] = ("mask.png", mask_bytes, "image/png")
+                    files.insert(1, ("mask", ("mask.png", mask_bytes, "image/png")))
 
                 response = await client.post(
                     url,
