@@ -35,9 +35,9 @@ class MiniMaxClient:
         response_format: str = "base64",
     ) -> str:
         """
-        使用 MiniMax 进行图片到图片的编辑生成
+        使用 MiniMax 进行图片编辑生成
 
-        调用 MiniMax Image-to-Image API，传入原图和编辑指令，
+        将原图以 base64 形式放入 prompt，描述编辑指令，
         返回生成图片的 base64 数据。
 
         [image_bytes] 原始图片字节数据
@@ -50,20 +50,17 @@ class MiniMaxClient:
 
         url = f"{self.BASE_URL}/image_generation"
 
-        # 将图片转换为 base64 data URL
+        # 将图片转换为 base64
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
         mime_type = self._get_mime_type(image_bytes)
-        image_data_url = f"data:{mime_type};base64,{image_b64}"
+
+        # 构建包含原图的 prompt
+        # MiniMax image-01 支持在 prompt 中嵌入图片
+        combined_prompt = f"Please edit the text in this image according to the following instructions. Keep everything else exactly the same, including the background, objects, lighting, and style.\n\nOriginal image: data:{mime_type};base64,{image_b64}\n\nEditing instructions: {prompt}"
 
         payload = {
             "model": self.model,
-            "prompt": prompt,
-            "subject_reference": [
-                {
-                    "type": "image_url",
-                    "data": image_data_url,
-                }
-            ],
+            "prompt": combined_prompt,
             "response_format": response_format,
         }
 
@@ -112,8 +109,8 @@ class MiniMaxClient:
                 if not image_url:
                     raise ExternalServiceError("MiniMax", "No image URL returned")
                 # 下载图片
-                image_bytes = await self._download_image(image_url)
-                return base64.b64encode(image_bytes).decode("utf-8")
+                downloaded_bytes = await self._download_image(image_url)
+                return base64.b64encode(downloaded_bytes).decode("utf-8")
 
         except ContentModerationError:
             raise
