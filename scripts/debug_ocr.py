@@ -4,6 +4,7 @@
 逐步检查解析流程，找出问题所在。
 """
 import asyncio
+import base64
 import httpx
 
 
