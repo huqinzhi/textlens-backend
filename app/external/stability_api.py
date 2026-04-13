@@ -50,22 +50,23 @@ class StabilityAIClient:
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
-                # Stability AI 需要 multipart/form-data
+                # Stability AI image-to-image: 发送图片和 prompt 作为 JSON
                 files = {
-                    "image": ("image.png", image_bytes, "image/png"),
-                }
-                data = {
-                    "prompt": prompt,
-                    "negative_prompt": negative_prompt or "",
-                    "output_format": "png",
+                    "init_image": ("image.png", image_bytes, "image/png"),
                 }
                 if mask_bytes:
                     files["mask"] = ("mask.png", mask_bytes, "image/png")
 
+                json_data = {
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt or "",
+                    "output_format": "png",
+                }
+
                 response = await client.post(
                     url,
                     files=files,
-                    data=data,
+                    json=json_data,
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
                     },
