@@ -26,12 +26,68 @@ SDXL_ALLOWED_DIMENSIONS = [
 ]
 
 
-def resize_image_for_sdxl(image_bytes: bytes) -> bytes:
+def create_mask_for_region(
+    width: int,
+    height: int,
+    x: int,
+    y: int,
+    region_width: int,
+    region_height: int,
+) -> bytes:
+    """
+    根据文字区域创建白色蒙版（白色区域将被替换）
+
+    [width] 蒙版图片宽度
+    [height] 蒙版图片高度
+    [x] 文字区域左上角 X 坐标
+    [y] 文字区域左上角 Y 坐标
+    [region_width] 文字区域宽度
+    [region_height] 文字区域高度
+    返回蒙版图片字节数据（灰度图，白色=替换区域，黑色=保留区域）
+    """
+    mask = Image.new("L", (width, height), 0)  # 黑色背景
+    from PIL import ImageDraw
+    draw = ImageDraw.Draw(mask)
+    draw.rectangle(
+        [x, y, x + region_width, y + region_height],
+        fill=255  # 白色区域将被 AI 重新生成
+    )
+    output = io.BytesIO()
+    mask.save(output, format="PNG")
+    return output.getvalue()
+
+
+def scale_mask_to_image(
+    mask_bytes: bytes,
+    orig_width: int,
+    orig_height: int,
+    target_width: int,
+    target_height: int,
+) -> bytes:
+    """
+    将原始尺寸的 mask 缩放到目标尺寸（与图片同步缩放）
+
+    [mask_bytes] 原始 mask 字节数据
+    [orig_width] 原始图片宽度
+    [orig_height] 原始图片高度
+    [target_width] 目标图片宽度
+    [target_height] 目标图片高度
+    返回缩放后的 mask 字节数据
+    """
+    mask = Image.open(io.BytesIO(mask_bytes))
+    # 缩放 mask 到与图片相同的尺寸
+    mask_resized = mask.resize((target_width, target_height), Image.LANCZOS)
+    output = io.BytesIO()
+    mask_resized.save(output, format="PNG")
+    return output.getvalue()
+
+
+def resize_image_for_sdxl(image_bytes: bytes) -> tuple[bytes, int, int, int, int]:
     """
     将图片缩放到 SDXL 允许的尺寸
 
     [image_bytes] 原始图片字节数据
-    返回缩放后的图片字节数据
+    返回 (缩放后的图片字节数据, 原始宽度, 原始高度, 目标宽度, 目标高度)
     """
     img = Image.open(io.BytesIO(image_bytes))
     orig_width, orig_height = img.size
@@ -55,13 +111,13 @@ def resize_image_for_sdxl(image_bytes: bytes) -> bytes:
 
     # 如果原始尺寸已经是允许的，直接返回
     if (orig_width, orig_height) in SDXL_ALLOWED_DIMENSIONS:
-        return image_bytes
+        return image_bytes, orig_width, orig_height, orig_width, orig_height
 
     # 缩放图片
     img_resized = img.resize((target_width, target_height), Image.LANCZOS)
     output = io.BytesIO()
     img_resized.save(output, format=img.format or 'PNG')
-    return output.getvalue()
+    return output.getvalue(), orig_width, orig_height, target_width, target_height
 
 
 class StabilityAIClient:
@@ -105,7 +161,12 @@ class StabilityAIClient:
         try:
             import json
             # 缩放图片到 SDXL 允许的尺寸
-            image_bytes = resize_image_for_sdxl(image_bytes)
+            image_bytes, orig_w, orig_h, target_w, target_h = resize_image_for_sdxl(image_bytes)
+
+            # 如果提供了 mask，同步缩放 mask 到目标尺寸
+            if mask_bytes:
+                mask_bytes = scale_mask_to_image(mask_bytes, orig_w, orig_h, target_w, target_h)
+
             async with httpx.AsyncClient(timeout=120.0) as client:
                 # 构造 multipart/form-data 请求
                 # 使用 list of tuples 格式：(field_name, (filename, content, content_type)) 或 (field_name, content)
@@ -113,7 +174,6 @@ class StabilityAIClient:
                     ("init_image", ("image.png", image_bytes, "image/png")),
                     ("text_prompts[0][text]", prompt),
                     ("text_prompts[0][weight]", "1.0"),
-                    ("start_schedule", "0.1"),
                 ]
                 if mask_bytes:
                     files.insert(1, ("mask", ("mask.png", mask_bytes, "image/png")))

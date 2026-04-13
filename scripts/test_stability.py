@@ -7,7 +7,7 @@ import asyncio
 import sys
 sys.path.insert(0, '/app')
 
-from app.external.stability_api import StabilityAIClient
+from app.external.stability_api import StabilityAIClient, create_mask_for_region
 from app.external.s3_client import S3Client
 
 
@@ -25,14 +25,30 @@ async def test_stability_edit():
     image_bytes = await s3.download(image_url)
     print(f"Image size: {len(image_bytes)} bytes")
 
+    # OCR 结果：文字 "18681264718" 在位置 (405, 539)，尺寸 440x93
+    # 获取图片实际尺寸
+    from PIL import Image
+    import io
+    img = Image.open(io.BytesIO(image_bytes))
+    img_width, img_height = img.size
+    print(f"Image dimensions: {img_width}x{img_height}")
+
+    # 创建 mask：白色区域表示需要 AI 重新生成的部分
+    print("Creating mask...")
+    mask_bytes = create_mask_for_region(
+        width=img_width,
+        height=img_height,
+        x=405,        # 文字区域左上角 X
+        y=539,        # 文字区域左上角 Y
+        region_width=440,   # 文字区域宽度
+        region_height=93,   # 文字区域高度
+    )
+    print(f"Mask size: {len(mask_bytes)} bytes")
+
     # 构建编辑提示词
-    # 根据 OCR 结果，"18681264718" 在位置 (405, 539)，尺寸 440x93
-    prompt = """You are doing precise inpainting. The original image must be 100% preserved.
-Make ONLY this one change: replace the text "18681264718" with "测试".
-Do NOT touch anything else: no style changes, no color changes, no layout changes, no sharpening, no blurring.
-The background, UI elements, other text, images, logos, and all visual elements must remain exactly as they are.
-Text must remain crisp and sharp with the same font styling.
-The new text "测试" should replace "18681264718" at the same location with same size and font."""
+    prompt = """You are doing precise inpainting. Replace the text "18681264718" with "测试".
+Keep everything else in the image exactly the same: background, UI elements, other text, colors, logos.
+The text should remain crisp with the same font styling."""
 
     # 调用 Stability AI
     stability = StabilityAIClient()
@@ -40,6 +56,7 @@ The new text "测试" should replace "18681264718" at the same location with sam
     result_b64 = await stability.edit_image(
         image_bytes=image_bytes,
         prompt=prompt,
+        mask_bytes=mask_bytes,
     )
     print(f"Generated image size: {len(result_b64)} bytes (base64)")
 
