@@ -48,28 +48,26 @@ class StabilityAIClient:
 
         url = f"{self.BASE_URL}/generation/{self.engine_id}/image-to-image"
 
-        # 将原图编码为 base64
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-        # 构建请求数据
-        payload = {
-            "image": image_b64,
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
-            "output_format": "png",
-        }
-
-        if mask_bytes:
-            payload["mask"] = base64.b64encode(mask_bytes).decode("utf-8")
-
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                # Stability AI 需要 multipart/form-data
+                files = {
+                    "image": ("image.png", image_bytes, "image/png"),
+                }
+                data = {
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt or "",
+                    "output_format": "png",
+                }
+                if mask_bytes:
+                    files["mask"] = ("mask.png", mask_bytes, "image/png")
+
                 response = await client.post(
                     url,
-                    json=payload,
+                    files=files,
+                    data=data,
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
                     },
                 )
 
@@ -79,10 +77,10 @@ class StabilityAIClient:
                     raise ContentModerationError("Image content policy violation")
                 raise ExternalServiceError("Stability AI", f"API error: {error_msg}")
 
-            data = response.json()
+            result = response.json()
 
             # 解析返回的 base64 图片数据
-            artifacts = data.get("artifacts", [])
+            artifacts = result.get("artifacts", [])
             if not artifacts:
                 raise ExternalServiceError("Stability AI", "No image generated")
 
