@@ -104,7 +104,11 @@ class Settings(BaseSettings):
     OCR_SPACE_API_KEY: Optional[str] = None
     OCR_PROVIDER: str = "ocr_space"  # "google_vision" 或 "ocr_space"
 
-    # ── Stability AI 生图配置 ───────────────────────────────────────────
+    # ── MiniMax 生图配置 ─────────────────────────────────────────────
+    MINIMAX_API_KEY: Optional[str] = None
+    MINIMAX_IMAGE_MODEL: str = "image-01"  # 默认生图模型: image-01 / image-01-live
+
+    # ── Stability AI 生图配置（已弃用）────────────────────────────────
     STABILITY_API_KEY: Optional[str] = None
     STABILITY_ENGINE_ID: str = "stable-diffusion-xl-1024-v1-0"  # 默认生图引擎
 

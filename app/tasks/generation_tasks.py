@@ -1,6 +1,6 @@
 """
 AI 图片生成 Celery 任务
-处理 Stability AI 图片编辑的异步任务：下载原图、调用 API、上传结果、更新状态
+处理 MiniMax 图片编辑的异步任务：下载原图、提取视觉风格、构建提示词、调用MiniMax i2i API、上传结果、更新状态
 """
 import base64
 import logging
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.db.models.image import GenerationTask
-from app.external.stability_api import StabilityAIClient
+from app.external.minimax_api import MiniMaxClient
 from app.external.s3_client import S3Client
 from app.core.constants import TaskStatus
 
@@ -26,7 +26,7 @@ class GenerationTaskBase(Task):
     """
 
     _db: Session = None
-    _stability_client: StabilityAIClient = None
+    _minimax_client: MiniMaxClient = None
     _s3_client: S3Client = None
 
     @property
@@ -37,18 +37,17 @@ class GenerationTaskBase(Task):
         return self._db
 
     @property
-    def stability_client(self) -> StabilityAIClient:
-        """懒加载 Stability AI 客户端"""
-        if self._stability_client is None:
-            self._stability_client = StabilityAIClient()
-        return self._stability_client
+    def minimax_client(self) -> MiniMaxClient:
+        """懒加载 MiniMax 客户端"""
+        if self._minimax_client is None:
+            self._minimax_client = MiniMaxClient()
+        return self._minimax_client
 
     @property
     def s3_client(self) -> S3Client:
         """懒加载 S3 客户端"""
         if self._s3_client is None:
             self._s3_client = S3Client()
-        return self._s3_client
         return self._s3_client
 
 
@@ -94,7 +93,7 @@ def process_generation(self, task_id: str) -> dict:
 
     try:
         result_url = asyncio.get_event_loop().run_until_complete(
-            _execute_generation(task, self.stability_client, self.s3_client)
+            _execute_generation(task, self.minimax_client, self.s3_client)
         )
 
         # 更新任务状态为完成
@@ -125,16 +124,20 @@ def process_generation(self, task_id: str) -> dict:
 
 async def _execute_generation(
     task: GenerationTask,
-    stability_client: StabilityAIClient,
+    minimax_client: MiniMaxClient,
     s3_client: S3Client,
 ) -> str:
     """
     执行图片生成的核心异步逻辑
 
-    使用 Stability AI 进行图片编辑。
+    使用 MiniMax i2i 进行图片编辑：
+    1. 下载原始图片
+    2. 提取每个编辑区域的视觉风格
+    3. 构建包含原文→新文和风格信息的提示词
+    4. 调用 MiniMax i2i 直接生成
 
     [task] 数据库中的生成任务记录
-    [stability_client] Stability AI 客户端
+    [minimax_client] MiniMax 客户端
     [s3_client] S3 存储客户端
     返回生成图片的 S3 URL
     """
@@ -169,21 +172,17 @@ async def _execute_generation(
         style = await extract_text_region_style(original_bytes, abs_x, abs_y, abs_w, abs_h)
         visual_styles[block_id] = style
 
-    # 使用 Stability AI 生成
-    logger.info(f"[Generation] Using Stability AI provider for task: {task.id}")
-
-    # 构建 Stability AI 提示词（包含视觉风格信息）
-    prompt = _build_stability_prompt(
+    # 构建 MiniMax i2i 提示词（包含原文→新文映射和视觉风格）
+    prompt = _build_minimax_prompt(
         ocr_blocks, edit_blocks, image_width, image_height, detected_language, visual_styles
     )
 
-    # 根据编辑区域创建 mask
-    mask_bytes = _build_edit_mask(edit_blocks, ocr_blocks, image_width, image_height)
-
-    result_b64 = await stability_client.edit_image(
+    # 调用 MiniMax i2i 直接生成
+    logger.info(f"[Generation] Using MiniMax i2i for task: {task.id}")
+    result_b64 = await minimax_client.image_to_image(
         image_bytes=original_bytes,
         prompt=prompt,
-        mask_bytes=mask_bytes,
+        response_format="base64",
     )
 
     # 将 base64 结果解码为字节
@@ -195,7 +194,7 @@ async def _execute_generation(
     return result_url
 
 
-def _build_stability_prompt(
+def _build_minimax_prompt(
     ocr_blocks: list[dict],
     edit_blocks: list[dict],
     image_width: int,
@@ -204,18 +203,18 @@ def _build_stability_prompt(
     visual_styles: dict[str, dict] | None = None,
 ) -> str:
     """
-    构建 Stability AI 图片编辑提示词
+    构建 MiniMax i2i 图片编辑提示词
 
-    将 OCR 文字块和编辑指令转化为 Stability AI 专用的提示词格式。
-    Stability AI 不支持直接传入图片编辑，需要在提示词中描述期望的修改。
+    将 OCR 文字块和编辑指令转化为 MiniMax i2i 的提示词格式，
+    详细描述原文→新文映射、文字位置、视觉风格等信息。
 
     [ocr_blocks] 原始 OCR 识别文字块列表
     [edit_blocks] 用户编辑后的文字块列表
     [image_width] 图片宽度
     [image_height] 图片高度
     [detected_language] 检测到的文字语言
-    [visual_styles] 文字区域的视觉风格信息（颜色、是否有下划线等）
-    返回 Stability AI 格式的提示词
+    [visual_styles] 文字区域的视觉风格信息
+    返回 MiniMax i2i 格式的提示词
     """
     # 构建原文 → 文字块数据的映射
     ocr_map = {b.get("id"): b for b in ocr_blocks}
@@ -248,211 +247,44 @@ def _build_stability_prompt(
 
         # 获取视觉风格描述
         style = visual_styles.get(block_id, {})
-        text_color_desc = "light colored text" if style.get("text_color") == "light" else "dark colored text"
-        underline_desc = "with underline below" if style.get("has_underline") else ""
+        text_color_desc = "浅色文字" if style.get("text_color") == "light" else "深色文字"
+        underline_desc = "有下划线" if style.get("has_underline") else "无下划线"
         avg_color = style.get("avg_color", [0, 0, 0])
+        color_rgb = f"RGB({avg_color[0]}, {avg_color[1]}, {avg_color[2]})"
 
-        region_desc = f"""[{len(regions_list) + 1}] Replace text "{original_text}" with "{new_text}" at position ({abs_x},{abs_y}) with size {abs_width}x{abs_height}px. The original text is {text_color_desc} {underline_desc}. Keep the exact same visual style."""
+        region_desc = (
+            f'将位置 ({abs_x},{abs_y})，尺寸 {abs_width}x{abs_height}px 的文字 '
+            f'"{original_text}" 替换为 "{new_text}"。'
+            f'文字颜色：{text_color_desc}（{color_rgb}），{underline_desc}，'
+            f'字体大小与原图保持一致。'
+        )
         regions_list.append(region_desc)
 
     if not regions_list:
-        return "Keep the image exactly as is."
+        return "Keep the image exactly as it is, maintain all text and visual elements."
 
     regions_text = "\n".join(regions_list)
 
-    # Stability AI 提示词格式
-    prompt = f"""Text inpainting. Replace text in the masked area while preserving the original visual style.
+    # MiniMax i2i 提示词格式
+    prompt = f"""图片文字编辑任务。请严格按照以下要求修改指定位置的文字。
 
-Image dimensions: {image_width}x{image_height} pixels, Language: {detected_language}
+图片信息：
+- 尺寸：{image_width}x{image_height} 像素
+- 语言：{detected_language}
 
-Text modifications:
+文字修改详情：
 {regions_text}
 
-Requirements:
-1. Only modify text within the masked/bounded area
-2. Preserve the original text color, size, and style exactly
-3. If there was an underline, keep the same underline style
-4. The surrounding area and all other elements must remain UNCHANGED
-5. Generate clear, sharp, readable text
-6. The new text should seamlessly blend with the original image"""
+重要要求：
+1. 严格保持原图的构图、布局、光影效果和所有视觉元素
+2. 替换后的文字必须与周围环境在颜色、质感、透视上完全一致
+3. 文字的字体、大小、间距、倾斜角度必须与原图保持一致
+4. 如果原文字有下划线、描边、阴影等效果，新文字必须保留相同的装饰效果
+5. 文字位置必须精确对齐，不能有任何偏移
+6. 背景、物体、人物等所有非文字区域必须完全不变
+7. 生成图片质量要高，文字边缘要清晰锐利，无模糊或锯齿"""
 
     return prompt
-
-
-def _build_edit_mask(
-    edit_blocks: list[dict],
-    ocr_blocks: list[dict],
-    image_width: int,
-    image_height: int,
-) -> bytes | None:
-    """
-    根据编辑区域构建 mask 蒙版
-
-    将所有需要编辑的文字区域合并为一个 mask，白色区域表示需要 AI 重新生成。
-
-    [edit_blocks] 用户编辑后的文字块列表
-    [ocr_blocks] 原始 OCR 识别文字块列表
-    [image_width] 图片宽度
-    [image_height] 图片高度
-    返回 mask 字节数据，如果没有编辑区域则返回 None
-    """
-    from PIL import Image, ImageDraw
-
-    # 构建原文 → 文字块数据的映射
-    ocr_map = {b.get("id"): b for b in ocr_blocks}
-
-    # 收集所有需要编辑的区域
-    regions = []
-    for edit in edit_blocks:
-        block_id = edit.get("id") or edit.get("block_id")
-        block_info = ocr_map.get(block_id, {})
-
-        x = block_info.get("x", 0.0)
-        y = block_info.get("y", 0.0)
-        width = block_info.get("width", 0.0)
-        height = block_info.get("height", 0.0)
-
-        abs_x = int(x * image_width)
-        abs_y = int(y * image_height)
-        abs_width = int(width * image_width)
-        abs_height = int(height * image_height)
-
-        if abs_width > 0 and abs_height > 0:
-            regions.append((abs_x, abs_y, abs_width, abs_height))
-
-    if not regions:
-        return None
-
-    # 创建 mask（黑色背景）
-    mask = Image.new("L", (image_width, image_height), 0)
-    draw = ImageDraw.Draw(mask)
-
-    # 绘制所有编辑区域（白色）
-    for x, y, w, h in regions:
-        draw.rectangle([x, y, x + w, y + h], fill=255)
-
-    import io
-    output = io.BytesIO()
-    mask.save(output, format="PNG")
-    return output.getvalue()
-
-
-def _render_text_with_pil(
-    original_bytes: bytes,
-    edit_blocks: list[dict],
-    ocr_blocks: list[dict],
-    image_width: int,
-    image_height: int,
-) -> bytes:
-    """
-    使用 PIL 在原图上直接渲染替换文字
-
-    由于 Stability AI 的 inpainting 对文字替换效果不佳，
-    改用 PIL 直接绘制文字，完全保留原图和其他元素。
-
-    [original_bytes] 原始图片字节数据
-    [edit_blocks] 用户编辑后的文字块列表
-    [ocr_blocks] 原始 OCR 识别文字块列表
-    [image_width] 图片宽度
-    [image_height] 图片高度
-    返回处理后的图片字节数据
-    """
-    from PIL import Image, ImageDraw, ImageFont
-    import io
-
-    # 打开原图
-    img = Image.open(io.BytesIO(original_bytes)).convert("RGBA")
-
-    # 构建原文 → 文字块数据的映射
-    ocr_map = {b.get("id"): b for b in ocr_blocks}
-
-    # 创建可绘制的图层
-    txt_layer = Image.new("RGBA", img.size, (255, 255, 255, 0))
-    draw = ImageDraw.Draw(txt_layer)
-
-    # 尝试加载字体（优先使用系统字体）
-    try:
-        # 尝试常见的中文字体路径
-        font_paths = [
-            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/System/Library/Fonts/PingFang.ttc",  # macOS
-            "C:/Windows/Fonts/msyh.ttc",  # Windows
-        ]
-        font = None
-        for font_path in font_paths:
-            try:
-                font = ImageFont.truetype(font_path, size=40)
-                break
-            except:
-                continue
-        if font is None:
-            font = ImageFont.load_default()
-    except:
-        font = ImageFont.load_default()
-
-    for edit in edit_blocks:
-        block_id = edit.get("id") or edit.get("block_id")
-        new_text = edit.get("new_text", "").strip()
-        original_text = edit.get("original_text", "")
-
-        if not new_text:
-            continue
-
-        block_info = ocr_map.get(block_id, {})
-
-        # 获取原始文字位置和尺寸
-        x = block_info.get("x", 0.0)
-        y = block_info.get("y", 0.0)
-        width = block_info.get("width", 0.0)
-        height = block_info.get("height", 0.0)
-
-        abs_x = int(x * image_width)
-        abs_y = int(y * image_height)
-        abs_width = int(width * image_width)
-        abs_height = int(height * image_height)
-
-        # 计算字体大小（根据原始文字区域高度）
-        font_size = max(int(abs_height * 0.8), 20)
-
-        try:
-            if font != ImageFont.load_default():
-                font = ImageFont.truetype(font.path, size=font_size)
-        except:
-            pass
-
-        # 在文字区域中心绘制新文字（白色，半透明背景确保可读性）
-        # 先绘制背景（半透明白色块）
-        bg_padding = 2
-        draw.rectangle(
-            [abs_x - bg_padding, abs_y - bg_padding,
-             abs_x + abs_width + bg_padding, abs_y + abs_height + bg_padding],
-            fill=(255, 255, 255, 200)
-        )
-
-        # 计算文字位置（居中）
-        bbox = draw.textbbox((0, 0), new_text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        text_x = abs_x + (abs_width - text_width) // 2
-        text_y = abs_y + (abs_height - text_height) // 2
-
-        # 绘制黑色文字
-        draw.text((text_x, text_y), new_text, font=font, fill=(0, 0, 0, 255))
-
-    # 合并图层
-    result = Image.alpha_composite(img, txt_layer)
-
-    # 转换为 RGB（去掉 alpha 通道）用于保存为 PNG
-    if result.mode == "RGBA":
-        result = result.convert("RGB")
-
-    # 保存结果
-    output = io.BytesIO()
-    result.save(output, format="PNG")
-    return output.getvalue()
 
 
 def _refund_credits(db: Session, task: GenerationTask) -> None:
