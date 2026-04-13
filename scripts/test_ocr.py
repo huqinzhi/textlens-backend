@@ -4,16 +4,20 @@
 用于验证 OCR 服务是否正常工作。
 """
 import base64
+import asyncio
 import httpx
 
 
 OCR_API_URL = "https://api.ocr.space/parse/image"
-API_KEY = "K85802480388957"  # 从 .env 获取
+API_KEY = "K85802480388957"
 
 
 async def test_ocr_space():
-    """测试 OCR.space API"""
-    # 读取一张测试图片（假设在 /tmp/test.jpg）
+    """
+    测试 OCR.space API
+
+    读取 /tmp/test.jpg 图片并测试 OCR 识别。
+    """
     try:
         with open("/tmp/test.jpg", "rb") as f:
             image_bytes = f.read()
@@ -42,10 +46,13 @@ async def test_ocr_space():
             print(f"Status: {resp.status_code}")
             data = resp.json()
             print(f"Response: {data}")
+
+            if data.get("ParsedResults"):
+                for result in data["ParsedResults"]:
+                    print(f"Text: {result.get('ParsedText', '')}")
     except Exception as e:
         print(f"Error: {e}")
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(test_ocr_space())
