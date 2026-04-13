@@ -156,7 +156,11 @@ class StabilityAIClient:
         if not self.api_key:
             raise ExternalServiceError("Stability AI", "API key not configured")
 
-        url = f"{self.BASE_URL}/generation/{self.engine_id}/image-to-image"
+        # 根据是否提供 mask 决定使用哪个端点
+        if mask_bytes:
+            url = f"{self.BASE_URL}/generation/{self.engine_id}/inpainting"
+        else:
+            url = f"{self.BASE_URL}/generation/{self.engine_id}/image-to-image"
 
         try:
             import json
