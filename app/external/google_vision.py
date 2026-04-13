@@ -4,10 +4,86 @@ Google Cloud Vision API 客户端封装
 """
 import base64
 from typing import Any
+import io
 import httpx
+from PIL import Image
 
 from app.config import settings
 from app.core.exceptions import ExternalServiceError
+
+
+async def extract_text_region_style(
+    image_bytes: bytes,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+) -> dict[str, Any]:
+    """
+    从图片中提取文字区域的视觉风格
+
+    分析文字区域的颜色，辅助构建 Stability AI 提示词。
+
+    [image_bytes] 原始图片字节数据
+    [x] 文字区域左上角 X 坐标（像素）
+    [y] 文字区域左上角 Y 坐标（像素）
+    [width] 文字区域宽度
+    [height] 文字区域高度
+    返回包含颜色和风格信息的字典
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # 扩展区域以包含可能的描边/阴影
+        padding = 2
+        left = max(0, x - padding)
+        top = max(0, y - padding)
+        right = min(img.width, x + width + padding)
+        bottom = min(img.height, y + height + padding)
+
+        # 裁剪文字区域
+        region = img.crop((left, top, right, bottom))
+
+        # 分析颜色
+        pixels = list(region.getdata())
+        non_white_pixels = [p for p in pixels if sum(p[:3]) < 600]  # 排除接近白色的像素
+
+        if non_white_pixels:
+            # 计算平均颜色
+            avg_color = [
+                sum(p[0] for p in non_white_pixels) // len(non_white_pixels),
+                sum(p[1] for p in non_white_pixels) // len(non_white_pixels),
+                sum(p[2] for p in non_white_pixels) // len(non_white_pixels),
+            ]
+        else:
+            avg_color = [255, 255, 255]  # 默认白色
+
+        # 判断颜色是深色还是浅色
+        brightness = sum(avg_color) / 3
+        text_color = "dark" if brightness < 128 else "light"
+
+        # 检查是否有下划线（通过分析文字区域下方的像素）
+        has_underline = False
+        if y + height + 3 < img.height:
+            underline_region = img.crop((x, y + height, x + width, y + height + 3))
+            underline_pixels = list(underline_region.getdata())
+            underline_dark = [p for p in underline_pixels if sum(p[:3]) < 400]
+            if len(underline_dark) > width * 0.3:  # 超过30%的像素是深色
+                has_underline = True
+
+        return {
+            "text_color": text_color,
+            "avg_color": avg_color,
+            "has_underline": has_underline,
+        }
+    except Exception:
+        return {
+            "text_color": "unknown",
+            "avg_color": [0, 0, 0],
+            "has_underline": False,
+        }
 
 
 class GoogleVisionClient:

@@ -53,11 +53,30 @@ async def test_stability_edit():
         "new_text": "测试测试",
     }]
 
+    # 提取视觉风格信息
+    from app.external.google_vision import extract_text_region_style
+    ocr_map = {b.get("id"): b for b in ocr_blocks}
+    visual_styles = {}
+    for edit in edit_blocks:
+        block_id = edit.get("id")
+        block_info = ocr_map.get(block_id, {})
+        x_norm = block_info.get("x", 0.0)
+        y_norm = block_info.get("y", 0.0)
+        w_norm = block_info.get("width", 0.0)
+        h_norm = block_info.get("height", 0.0)
+        abs_x = int(x_norm * img_width)
+        abs_y = int(y_norm * img_height)
+        abs_w = int(w_norm * img_width)
+        abs_h = int(h_norm * img_height)
+        style = await extract_text_region_style(image_bytes, abs_x, abs_y, abs_w, abs_h)
+        visual_styles[block_id] = style
+        print(f"Visual style for {block_id}: {style}")
+
     # 使用服务器上的提示词构建逻辑
     from app.tasks.generation_tasks import _build_stability_prompt, _build_edit_mask
 
     print("Building prompt...")
-    prompt = _build_stability_prompt(ocr_blocks, edit_blocks, img_width, img_height, "zh")
+    prompt = _build_stability_prompt(ocr_blocks, edit_blocks, img_width, img_height, "zh", visual_styles)
     print(f"Prompt:\n{prompt}\n")
 
     print("Building mask...")

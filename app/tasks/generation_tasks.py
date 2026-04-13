@@ -151,11 +151,31 @@ async def _execute_generation(
     image_height = ocr_data.get("image_height", 1024)
     detected_language = ocr_data.get("detected_language", "en")
 
+    # 提取每个编辑区域的视觉风格信息
+    from app.external.google_vision import extract_text_region_style
+    ocr_map = {b.get("id"): b for b in ocr_blocks}
+    visual_styles = {}
+    for edit in edit_blocks:
+        block_id = edit.get("id") or edit.get("block_id")
+        block_info = ocr_map.get(block_id, {})
+        x_norm = block_info.get("x", 0.0)
+        y_norm = block_info.get("y", 0.0)
+        w_norm = block_info.get("width", 0.0)
+        h_norm = block_info.get("height", 0.0)
+        abs_x = int(x_norm * image_width)
+        abs_y = int(y_norm * image_height)
+        abs_w = int(w_norm * image_width)
+        abs_h = int(h_norm * image_height)
+        style = await extract_text_region_style(original_bytes, abs_x, abs_y, abs_w, abs_h)
+        visual_styles[block_id] = style
+
     # 使用 Stability AI 生成
     logger.info(f"[Generation] Using Stability AI provider for task: {task.id}")
 
-    # 构建 Stability AI 提示词
-    prompt = _build_stability_prompt(ocr_blocks, edit_blocks, image_width, image_height, detected_language)
+    # 构建 Stability AI 提示词（包含视觉风格信息）
+    prompt = _build_stability_prompt(
+        ocr_blocks, edit_blocks, image_width, image_height, detected_language, visual_styles
+    )
 
     # 根据编辑区域创建 mask
     mask_bytes = _build_edit_mask(edit_blocks, ocr_blocks, image_width, image_height)
@@ -181,6 +201,7 @@ def _build_stability_prompt(
     image_width: int,
     image_height: int,
     detected_language: str,
+    visual_styles: dict[str, dict] | None = None,
 ) -> str:
     """
     构建 Stability AI 图片编辑提示词
@@ -193,12 +214,12 @@ def _build_stability_prompt(
     [image_width] 图片宽度
     [image_height] 图片高度
     [detected_language] 检测到的文字语言
+    [visual_styles] 文字区域的视觉风格信息（颜色、是否有下划线等）
     返回 Stability AI 格式的提示词
     """
-    from app.core.constants import GENERATION_PROMPT_TEMPLATE
-
     # 构建原文 → 文字块数据的映射
     ocr_map = {b.get("id"): b for b in ocr_blocks}
+    visual_styles = visual_styles or {}
 
     # 构建替换指令列表
     regions_list = []
@@ -225,7 +246,13 @@ def _build_stability_prompt(
         abs_width = int(width * image_width)
         abs_height = int(height * image_height)
 
-        region_desc = f"""[{len(regions_list) + 1}] Replace text "{original_text}" with "{new_text}" at position ({abs_x},{abs_y}) with size {abs_width}x{abs_height}px. Keep the same font style, size, color, and position."""
+        # 获取视觉风格描述
+        style = visual_styles.get(block_id, {})
+        text_color_desc = "light colored text" if style.get("text_color") == "light" else "dark colored text"
+        underline_desc = "with underline below" if style.get("has_underline") else ""
+        avg_color = style.get("avg_color", [0, 0, 0])
+
+        region_desc = f"""[{len(regions_list) + 1}] Replace text "{original_text}" with "{new_text}" at position ({abs_x},{abs_y}) with size {abs_width}x{abs_height}px. The original text is {text_color_desc} {underline_desc}. Keep the exact same visual style."""
         regions_list.append(region_desc)
 
     if not regions_list:
@@ -234,8 +261,7 @@ def _build_stability_prompt(
     regions_text = "\n".join(regions_list)
 
     # Stability AI 提示词格式
-    # 使用更具体的视觉描述来引导 AI 生成正确的文字
-    prompt = f"""Edit and modify the characters in the specified text region.
+    prompt = f"""Text inpainting. Replace text in the masked area while preserving the original visual style.
 
 Image dimensions: {image_width}x{image_height} pixels, Language: {detected_language}
 
@@ -243,11 +269,12 @@ Text modifications:
 {regions_text}
 
 Requirements:
-1. Only modify the characters within the specified bounding box/region
-2. The surrounding area, background, and all other elements must remain UNCHANGED
-3. Generate clear, readable text that is visually consistent with the original text style
-4. The text should be sharp and properly rendered
-5. Match the approximate size, position, and general appearance of the original text"""
+1. Only modify text within the masked/bounded area
+2. Preserve the original text color, size, and style exactly
+3. If there was an underline, keep the same underline style
+4. The surrounding area and all other elements must remain UNCHANGED
+5. Generate clear, sharp, readable text
+6. The new text should seamlessly blend with the original image"""
 
     return prompt
 
