@@ -156,9 +156,10 @@ class StabilityAIClient:
         if not self.api_key:
             raise ExternalServiceError("Stability AI", "API key not configured")
 
-        # 根据是否提供 mask 决定使用哪个端点
+        # v2beta API 端点
+        # 有 mask 用 inpaint 端点，无 mask 用 image-to-image
         if mask_bytes:
-            url = f"{self.BASE_URL}/generation/{self.engine_id}/inpainting"
+            url = "https://api.stability.ai/v2beta/stable-image/edit/inpaint"
         else:
             url = f"{self.BASE_URL}/generation/{self.engine_id}/image-to-image"
 
@@ -172,23 +173,39 @@ class StabilityAIClient:
                 mask_bytes = scale_mask_to_image(mask_bytes, orig_w, orig_h, target_w, target_h)
 
             async with httpx.AsyncClient(timeout=120.0) as client:
-                # 构造 multipart/form-data 请求
-                # 使用 list of tuples 格式：(field_name, (filename, content, content_type)) 或 (field_name, content)
-                files = [
-                    ("init_image", ("image.png", image_bytes, "image/png")),
-                    ("text_prompts[0][text]", prompt),
-                    ("text_prompts[0][weight]", "1.0"),
-                ]
                 if mask_bytes:
-                    files.insert(1, ("mask", ("mask.png", mask_bytes, "image/png")))
-
-                response = await client.post(
-                    url,
-                    files=files,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                    },
-                )
+                    # v2beta API 使用 files 传图片和 mask，data 传提示词
+                    files = {
+                        "image": ("image.png", image_bytes, "image/png"),
+                        "mask": ("mask.png", mask_bytes, "image/png"),
+                    }
+                    data = {
+                        "prompt": prompt,
+                        "output_format": "png",
+                    }
+                    response = await client.post(
+                        url,
+                        files=files,
+                        data=data,
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "accept": "image/*",
+                        },
+                    )
+                else:
+                    # v1 API 使用 text_prompts 数组格式
+                    files = [
+                        ("init_image", ("image.png", image_bytes, "image/png")),
+                        ("text_prompts[0][text]", prompt),
+                        ("text_prompts[0][weight]", "1.0"),
+                    ]
+                    response = await client.post(
+                        url,
+                        files=files,
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                        },
+                    )
 
             if response.status_code != 200:
                 error_msg = response.text
@@ -196,14 +213,16 @@ class StabilityAIClient:
                     raise ContentModerationError("Image content policy violation")
                 raise ExternalServiceError("Stability AI", f"API error: {error_msg}")
 
-            result = response.json()
-
-            # 解析返回的 base64 图片数据
-            artifacts = result.get("artifacts", [])
-            if not artifacts:
-                raise ExternalServiceError("Stability AI", "No image generated")
-
-            return artifacts[0]["base64"]
+            if mask_bytes:
+                # v2beta API 直接返回图片二进制数据
+                return base64.b64encode(response.content).decode("utf-8")
+            else:
+                # v1 API 返回 JSON 格式的 base64
+                result = response.json()
+                artifacts = result.get("artifacts", [])
+                if not artifacts:
+                    raise ExternalServiceError("Stability AI", "No image generated")
+                return artifacts[0]["base64"]
 
         except ContentModerationError:
             raise
