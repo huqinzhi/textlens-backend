@@ -37,8 +37,8 @@ class MiniMaxClient:
         """
         使用 MiniMax 进行图片编辑生成
 
-        将原图以 base64 形式放入 prompt，描述编辑指令，
-        返回生成图片的 base64 数据。
+        调用 MiniMax image-01 的 character 参考功能，
+        传入原图和编辑指令，返回生成图片的 base64 数据。
 
         [image_bytes] 原始图片字节数据
         [prompt] 图片编辑提示词（描述需要做的文字替换和风格）
@@ -50,17 +50,20 @@ class MiniMaxClient:
 
         url = f"{self.BASE_URL}/image_generation"
 
-        # 将图片转换为 base64
+        # 将图片转换为 base64 data URL
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
         mime_type = self._get_mime_type(image_bytes)
-
-        # 构建包含原图的 prompt
-        # MiniMax image-01 支持在 prompt 中嵌入图片
-        combined_prompt = f"Please edit the text in this image according to the following instructions. Keep everything else exactly the same, including the background, objects, lighting, and style.\n\nOriginal image: data:{mime_type};base64,{image_b64}\n\nEditing instructions: {prompt}"
+        image_data_url = f"data:{mime_type};base64,{image_b64}"
 
         payload = {
             "model": self.model,
-            "prompt": combined_prompt,
+            "prompt": prompt,
+            "subject_reference": [
+                {
+                    "type": "character",
+                    "image_file": image_data_url,
+                }
+            ],
             "response_format": response_format,
         }
 
@@ -77,14 +80,17 @@ class MiniMaxClient:
 
             if response.status_code != 200:
                 error_msg = response.text
-                status_code = response.json().get("base_resp", {}).get("status_code", 0)
+                result = response.json()
+                status_code = result.get("base_resp", {}).get("status_code", 0)
+                status_msg = result.get("base_resp", {}).get("status_msg", "")
+                logger.error(f"[MiniMax] API error: {status_code} - {status_msg}")
                 if status_code == 1026 or "sensitive" in error_msg.lower():
                     raise ContentModerationError("Image content policy violation")
                 if status_code == 1008:
                     raise ExternalServiceError("MiniMax", "Insufficient account balance")
                 if status_code == 1004 or status_code == 2049:
                     raise ExternalServiceError("MiniMax", "Invalid API key")
-                raise ExternalServiceError("MiniMax", f"API error: {error_msg}")
+                raise ExternalServiceError("MiniMax", f"API error: {status_code} - {status_msg}")
 
             result = response.json()
 
@@ -92,24 +98,23 @@ class MiniMaxClient:
             logger.info(f"[MiniMax] Response status: {response.status_code}")
             logger.info(f"[MiniMax] Response body: {result}")
 
-            # 解析响应
+            # 解析响应 - MiniMax 使用 image_urls / image_base64
             data = result.get("data")
             if data is None:
                 raise ExternalServiceError("MiniMax", f"Invalid response: {result}")
-            items = data.get("items", [])
-            if not items:
-                raise ExternalServiceError("MiniMax", "No image generated")
 
             # 优先返回 base64
             if response_format == "base64":
-                return items[0].get("base64", "")
+                image_base64_list = data.get("image_base64", [])
+                if image_base64_list:
+                    return image_base64_list[0]
+                raise ExternalServiceError("MiniMax", "No base64 image in response")
             else:
-                # 如果是 url 格式，需要再下载回来转为 base64
-                image_url = items[0].get("url", "")
-                if not image_url:
-                    raise ExternalServiceError("MiniMax", "No image URL returned")
+                image_urls = data.get("image_urls", [])
+                if not image_urls:
+                    raise ExternalServiceError("MiniMax", "No image URL in response")
                 # 下载图片
-                downloaded_bytes = await self._download_image(image_url)
+                downloaded_bytes = await self._download_image(image_urls[0])
                 return base64.b64encode(downloaded_bytes).decode("utf-8")
 
         except ContentModerationError:
