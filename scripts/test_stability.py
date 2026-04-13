@@ -27,10 +27,11 @@ async def test_stability_edit():
 
     # 构建编辑提示词
     # 根据 OCR 结果，"18681264718" 在位置 (405, 539)，尺寸 440x93
-    prompt = """Edit the text in this image. Replace the phone number "18681264718" with "测试".
-Keep the original font style, size, color, and position exactly the same.
-The text to replace is located at the bottom area of the image.
-Only modify the specified text, keep everything else unchanged."""
+    prompt = """Preserve the entire original image exactly as-is, with ALL elements, colors, textures, and details completely unchanged.
+ONLY perform this single specific edit: replace the phone number "18681264718" with "测试".
+Do NOT modify, alter, blur, enhance, or change anything else in the image.
+Keep all text crisp and sharp. Maintain exact same style, position, size, font, and color.
+The only change is swapping that one phone number to "测试"."""
 
     # 调用 Stability AI
     stability = StabilityAIClient()
