@@ -4,11 +4,14 @@ MiniMax API 客户端封装
 """
 import base64
 import io
+import logging
 from typing import Optional
 import httpx
 
 from app.config import settings
 from app.core.exceptions import ExternalServiceError, ContentModerationError
+
+logger = logging.getLogger(__name__)
 
 
 class MiniMaxClient:
