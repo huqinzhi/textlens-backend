@@ -157,9 +157,13 @@ async def _execute_generation(
     # 构建 Stability AI 提示词
     prompt = _build_stability_prompt(ocr_blocks, edit_blocks, image_width, image_height, detected_language)
 
+    # 根据编辑区域创建 mask
+    mask_bytes = _build_edit_mask(edit_blocks, ocr_blocks, image_width, image_height)
+
     result_b64 = await stability_client.edit_image(
         image_bytes=original_bytes,
         prompt=prompt,
+        mask_bytes=mask_bytes,
     )
 
     # 将 base64 结果解码为字节
@@ -230,20 +234,80 @@ def _build_stability_prompt(
     regions_text = "\n".join(regions_list)
 
     # Stability AI 提示词格式
-    prompt = f"""Edit the text in this image while preserving the original visual style exactly.
+    prompt = f"""Precise text replacement inpainting. The original text area may have underlines, backgrounds, or special styling.
 Image dimensions: {image_width}x{image_height} pixels, Language: {detected_language}
 
 Text modifications:
 {regions_text}
 
-Important requirements:
+CRITICAL requirements:
 - Replace ONLY the specified text, keep everything else unchanged
-- Match the original font style, size, color, and position precisely
+- Keep the background COMPLETELY TRANSPARENT in the text area - do NOT add any background color
+- Match the original font style, size, weight, color, and position precisely
+- Preserve any underlines, background shapes, or text decorations exactly as they were
 - Preserve lighting, shadows, and effects on the text
 - Seamless integration with background, no artifacts
 - Photorealistic, natural looking result"""
 
     return prompt
+
+
+def _build_edit_mask(
+    edit_blocks: list[dict],
+    ocr_blocks: list[dict],
+    image_width: int,
+    image_height: int,
+) -> bytes | None:
+    """
+    根据编辑区域构建 mask 蒙版
+
+    将所有需要编辑的文字区域合并为一个 mask，白色区域表示需要 AI 重新生成。
+
+    [edit_blocks] 用户编辑后的文字块列表
+    [ocr_blocks] 原始 OCR 识别文字块列表
+    [image_width] 图片宽度
+    [image_height] 图片高度
+    返回 mask 字节数据，如果没有编辑区域则返回 None
+    """
+    from PIL import Image, ImageDraw
+
+    # 构建原文 → 文字块数据的映射
+    ocr_map = {b.get("id"): b for b in ocr_blocks}
+
+    # 收集所有需要编辑的区域
+    regions = []
+    for edit in edit_blocks:
+        block_id = edit.get("id") or edit.get("block_id")
+        block_info = ocr_map.get(block_id, {})
+
+        x = block_info.get("x", 0.0)
+        y = block_info.get("y", 0.0)
+        width = block_info.get("width", 0.0)
+        height = block_info.get("height", 0.0)
+
+        abs_x = int(x * image_width)
+        abs_y = int(y * image_height)
+        abs_width = int(width * image_width)
+        abs_height = int(height * image_height)
+
+        if abs_width > 0 and abs_height > 0:
+            regions.append((abs_x, abs_y, abs_width, abs_height))
+
+    if not regions:
+        return None
+
+    # 创建 mask（黑色背景）
+    mask = Image.new("L", (image_width, image_height), 0)
+    draw = ImageDraw.Draw(mask)
+
+    # 绘制所有编辑区域（白色）
+    for x, y, w, h in regions:
+        draw.rectangle([x, y, x + w, y + h], fill=255)
+
+    import io
+    output = io.BytesIO()
+    mask.save(output, format="PNG")
+    return output.getvalue()
 
 
 def _refund_credits(db: Session, task: GenerationTask) -> None:
