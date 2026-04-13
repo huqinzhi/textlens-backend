@@ -234,20 +234,21 @@ def _build_stability_prompt(
     regions_text = "\n".join(regions_list)
 
     # Stability AI 提示词格式
-    prompt = f"""Precise text replacement inpainting. The original text area may have underlines, backgrounds, or special styling.
+    prompt = f"""Text replacement only. You are doing precise text inpainting - ONLY replace the text, nothing else.
+
 Image dimensions: {image_width}x{image_height} pixels, Language: {detected_language}
 
 Text modifications:
 {regions_text}
 
-CRITICAL requirements:
-- Replace ONLY the specified text, keep everything else unchanged
-- Keep the background COMPLETELY TRANSPARENT in the text area - do NOT add any background color
-- Match the original font style, size, weight, color, and position precisely
-- Preserve any underlines, background shapes, or text decorations exactly as they were
-- Preserve lighting, shadows, and effects on the text
-- Seamless integration with background, no artifacts
-- Photorealistic, natural looking result"""
+STRICT requirements:
+1. Replace ONLY the exact text specified above with the new text
+2. NO background color - the text area must be transparent/clear, same as surrounding area
+3. NO new elements, shapes, or decorations - only the text itself
+4. Text must be clean, crisp, sharp - not blurry or distorted
+5. Preserve the exact same font style, size, weight as the original text would have had
+6. Do NOT change, modify, or affect ANY other part of the image
+7. The result should look exactly as if only the text characters were swapped"""
 
     return prompt
 
