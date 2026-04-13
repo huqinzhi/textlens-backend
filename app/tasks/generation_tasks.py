@@ -151,23 +151,16 @@ async def _execute_generation(
     image_height = ocr_data.get("image_height", 1024)
     detected_language = ocr_data.get("detected_language", "en")
 
-    # 使用 Stability AI 生成
-    logger.info(f"[Generation] Using Stability AI provider for task: {task.id}")
+    # 使用 PIL 直接渲染文字（稳定性优先，AI inpainting 文字替换效果不佳）
+    logger.info(f"[Generation] Rendering text with PIL for task: {task.id}")
 
-    # 构建 Stability AI 提示词
-    prompt = _build_stability_prompt(ocr_blocks, edit_blocks, image_width, image_height, detected_language)
-
-    # 根据编辑区域创建 mask
-    mask_bytes = _build_edit_mask(edit_blocks, ocr_blocks, image_width, image_height)
-
-    result_b64 = await stability_client.edit_image(
-        image_bytes=original_bytes,
-        prompt=prompt,
-        mask_bytes=mask_bytes,
+    result_bytes = _render_text_with_pil(
+        original_bytes=original_bytes,
+        edit_blocks=edit_blocks,
+        ocr_blocks=ocr_blocks,
+        image_width=image_width,
+        image_height=image_height,
     )
-
-    # 将 base64 结果解码为字节
-    result_bytes = base64.b64decode(result_b64)
 
     # 上传结果图片到 S3
     result_url = await s3_client.upload_result(result_bytes, "image/png")
@@ -308,6 +301,124 @@ def _build_edit_mask(
     import io
     output = io.BytesIO()
     mask.save(output, format="PNG")
+    return output.getvalue()
+
+
+def _render_text_with_pil(
+    original_bytes: bytes,
+    edit_blocks: list[dict],
+    ocr_blocks: list[dict],
+    image_width: int,
+    image_height: int,
+) -> bytes:
+    """
+    使用 PIL 在原图上直接渲染替换文字
+
+    由于 Stability AI 的 inpainting 对文字替换效果不佳，
+    改用 PIL 直接绘制文字，完全保留原图和其他元素。
+
+    [original_bytes] 原始图片字节数据
+    [edit_blocks] 用户编辑后的文字块列表
+    [ocr_blocks] 原始 OCR 识别文字块列表
+    [image_width] 图片宽度
+    [image_height] 图片高度
+    返回处理后的图片字节数据
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import io
+
+    # 打开原图
+    img = Image.open(io.BytesIO(original_bytes)).convert("RGBA")
+
+    # 构建原文 → 文字块数据的映射
+    ocr_map = {b.get("id"): b for b in ocr_blocks}
+
+    # 创建可绘制的图层
+    txt_layer = Image.new("RGBA", img.size, (255, 255, 255, 0))
+    draw = ImageDraw.Draw(txt_layer)
+
+    # 尝试加载字体（优先使用系统字体）
+    try:
+        # 尝试常见的中文字体路径
+        font_paths = [
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/System/Library/Fonts/PingFang.ttc",  # macOS
+            "C:/Windows/Fonts/msyh.ttc",  # Windows
+        ]
+        font = None
+        for font_path in font_paths:
+            try:
+                font = ImageFont.truetype(font_path, size=40)
+                break
+            except:
+                continue
+        if font is None:
+            font = ImageFont.load_default()
+    except:
+        font = ImageFont.load_default()
+
+    for edit in edit_blocks:
+        block_id = edit.get("id") or edit.get("block_id")
+        new_text = edit.get("new_text", "").strip()
+        original_text = edit.get("original_text", "")
+
+        if not new_text:
+            continue
+
+        block_info = ocr_map.get(block_id, {})
+
+        # 获取原始文字位置和尺寸
+        x = block_info.get("x", 0.0)
+        y = block_info.get("y", 0.0)
+        width = block_info.get("width", 0.0)
+        height = block_info.get("height", 0.0)
+
+        abs_x = int(x * image_width)
+        abs_y = int(y * image_height)
+        abs_width = int(width * image_width)
+        abs_height = int(height * image_height)
+
+        # 计算字体大小（根据原始文字区域高度）
+        font_size = max(int(abs_height * 0.8), 20)
+
+        try:
+            if font != ImageFont.load_default():
+                font = ImageFont.truetype(font.path, size=font_size)
+        except:
+            pass
+
+        # 在文字区域中心绘制新文字（白色，半透明背景确保可读性）
+        # 先绘制背景（半透明白色块）
+        bg_padding = 2
+        draw.rectangle(
+            [abs_x - bg_padding, abs_y - bg_padding,
+             abs_x + abs_width + bg_padding, abs_y + abs_height + bg_padding],
+            fill=(255, 255, 255, 200)
+        )
+
+        # 计算文字位置（居中）
+        bbox = draw.textbbox((0, 0), new_text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        text_x = abs_x + (abs_width - text_width) // 2
+        text_y = abs_y + (abs_height - text_height) // 2
+
+        # 绘制黑色文字
+        draw.text((text_x, text_y), new_text, font=font, fill=(0, 0, 0, 255))
+
+    # 合并图层
+    result = Image.alpha_composite(img, txt_layer)
+
+    # 转换为 RGB（去掉 alpha 通道）用于保存为 PNG
+    if result.mode == "RGBA":
+        result = result.convert("RGB")
+
+    # 保存结果
+    output = io.BytesIO()
+    result.save(output, format="PNG")
     return output.getvalue()
 
 
