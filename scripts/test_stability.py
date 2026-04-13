@@ -46,9 +46,14 @@ async def test_stability_edit():
     print(f"Mask size: {len(mask_bytes)} bytes")
 
     # 构建编辑提示词
-    prompt = """You are doing precise inpainting. Replace the text "18681264718" with "测试".
-Keep everything else in the image exactly the same: background, UI elements, other text, colors, logos.
-The text should remain crisp with the same font styling."""
+    prompt = """Precise text replacement inpainting. The original text "18681264718" has a underline beneath it.
+CRITICAL requirements:
+1. Replace ONLY the text "18681264718" with "测试" - keep the exact same underline style and position
+2. Keep the background COMPLETELY TRANSPARENT in the text area - do NOT add any background color
+3. Use the exact same font, size, weight, and style as the original text
+4. Keep the underline exactly as it was - same thickness, same position below text
+5. DO NOT modify, add, or change anything else in the image - preserve all UI elements, colors, logos exactly
+The new text "测试" must look identical in style to the original "18681264718" including the underline."""
 
     # 调用 Stability AI
     stability = StabilityAIClient()
