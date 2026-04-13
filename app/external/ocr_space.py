@@ -127,7 +127,7 @@ class OCRSpaceClient:
                     continue
 
                 # 获取边界框坐标
-                vertices = line.get("LineWords", [])
+                vertices = line.get("Words", [])
                 if not vertices:
                     continue
 
