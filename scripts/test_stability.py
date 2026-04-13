@@ -2,12 +2,17 @@
 测试 Stability AI 图片生成
 
 使用 OCR 图片进行文字编辑测试。
+模拟服务器上的完整流程：下载图片 -> 构建提示词和mask -> 调用API -> 上传结果
 """
 import asyncio
 import sys
+import base64
 sys.path.insert(0, '/app')
 
-from app.external.stability_api import StabilityAIClient, create_mask_for_region
+from PIL import Image
+import io
+
+from app.external.stability_api import StabilityAIClient
 from app.external.s3_client import S3Client
 
 
@@ -25,35 +30,39 @@ async def test_stability_edit():
     image_bytes = await s3.download(image_url)
     print(f"Image size: {len(image_bytes)} bytes")
 
-    # OCR 结果：文字 "18681264718" 在位置 (405, 539)，尺寸 440x93
-    # 获取图片实际尺寸
-    from PIL import Image
-    import io
+    # 获取图片尺寸
     img = Image.open(io.BytesIO(image_bytes))
     img_width, img_height = img.size
     print(f"Image dimensions: {img_width}x{img_height}")
 
-    # 创建 mask：白色区域表示需要 AI 重新生成的部分
-    print("Creating mask...")
-    mask_bytes = create_mask_for_region(
-        width=img_width,
-        height=img_height,
-        x=405,        # 文字区域左上角 X
-        y=539,        # 文字区域左上角 Y
-        region_width=440,   # 文字区域宽度
-        region_height=93,   # 文字区域高度
-    )
-    print(f"Mask size: {len(mask_bytes)} bytes")
+    # OCR 结果：文字 "18681264718" 在位置 (405, 539)，尺寸 440x93
+    # 这是归一化坐标 (0-1)
+    ocr_blocks = [{
+        "id": "block_1",
+        "text": "18681264718",
+        "x": 405 / img_width,
+        "y": 539 / img_height,
+        "width": 440 / img_width,
+        "height": 93 / img_height,
+    }]
 
-    # 构建编辑提示词
-    prompt = """Precise text replacement inpainting. The original text "18681264718" has a underline beneath it.
-CRITICAL requirements:
-1. Replace ONLY the text "18681264718" with "测试" - keep the exact same underline style and position
-2. Keep the background COMPLETELY TRANSPARENT in the text area - do NOT add any background color
-3. Use the exact same font, size, weight, and style as the original text
-4. Keep the underline exactly as it was - same thickness, same position below text
-5. DO NOT modify, add, or change anything else in the image - preserve all UI elements, colors, logos exactly
-The new text "测试" must look identical in style to the original "18681264718" including the underline."""
+    # 编辑指令：旧文字 -> 新文字
+    edit_blocks = [{
+        "id": "block_1",
+        "original_text": "18681264718",
+        "new_text": "测试测试",
+    }]
+
+    # 使用服务器上的提示词构建逻辑
+    from app.tasks.generation_tasks import _build_stability_prompt, _build_edit_mask
+
+    print("Building prompt...")
+    prompt = _build_stability_prompt(ocr_blocks, edit_blocks, img_width, img_height, "zh")
+    print(f"Prompt:\n{prompt}\n")
+
+    print("Building mask...")
+    mask_bytes = _build_edit_mask(edit_blocks, ocr_blocks, img_width, img_height)
+    print(f"Mask size: {len(mask_bytes)} bytes")
 
     # 调用 Stability AI
     stability = StabilityAIClient()
@@ -66,7 +75,7 @@ The new text "测试" must look identical in style to the original "18681264718"
     print(f"Generated image size: {len(result_b64)} bytes (base64)")
 
     # 上传结果到 R2
-    result_bytes = __import__('base64').b64decode(result_b64)
+    result_bytes = base64.b64decode(result_b64)
     result_url = await s3.upload_result(result_bytes, "image/png")
     print(f"Result URL: {result_url}")
 
