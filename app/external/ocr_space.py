@@ -135,11 +135,24 @@ class OCRSpaceClient:
                 min_x = min_y = float("inf")
                 max_x = max_y = 0
                 for word in vertices:
-                    for v in word.get("WordRectangles", []):
-                        x = v.get("Left", 0)
-                        y = v.get("Top", 0)
-                        w = v.get("Width", 0)
-                        h = v.get("Height", 0)
+                    # 优先从 WordRectangles 获取坐标（部分 OCR API 格式）
+                    word_rects = word.get("WordRectangles", [])
+                    if word_rects:
+                        for v in word_rects:
+                            x = v.get("Left", 0)
+                            y = v.get("Top", 0)
+                            w = v.get("Width", 0)
+                            h = v.get("Height", 0)
+                            min_x = min(min_x, x)
+                            min_y = min(min_y, y)
+                            max_x = max(max_x, x + w)
+                            max_y = max(max_y, y + h)
+                    else:
+                        # OCR.space API 坐标直接在 word 对象上
+                        x = word.get("Left", 0)
+                        y = word.get("Top", 0)
+                        w = word.get("Width", 0)
+                        h = word.get("Height", 0)
                         min_x = min(min_x, x)
                         min_y = min(min_y, y)
                         max_x = max(max_x, x + w)
