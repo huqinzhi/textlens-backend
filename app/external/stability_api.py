@@ -58,8 +58,9 @@ class StabilityAIClient:
                     files["mask"] = ("mask.png", mask_bytes, "image/png")
 
                 json_data = {
-                    "prompt": prompt,
-                    "negative_prompt": negative_prompt or "",
+                    "text_prompts": [
+                        {"text": prompt, "weight": 1.0},
+                    ],
                     "output_format": "png",
                 }
 
