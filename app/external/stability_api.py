@@ -49,29 +49,24 @@ class StabilityAIClient:
         url = f"{self.BASE_URL}/generation/{self.engine_id}/image-to-image"
 
         try:
+            import json
             async with httpx.AsyncClient(timeout=120.0) as client:
-                # Stability AI image-to-image: 使用 multipart form data
-                # text_prompts 需要作为表单字段发送，值为 JSON 字符串
-                import json
-                files = {
-                    "init_image": ("image.png", image_bytes, "image/png"),
-                    "text_prompts": (
-                        "text_prompts",
-                        json.dumps([{"text": prompt, "weight": 1.0}]),
-                        "application/json",
-                    ),
-                    "image_strength": (
-                        "image_strength",
-                        "0.35",
-                        "text/plain",
-                    ),
-                }
+                # 手动构造 multipart/form-data
+                form = httpx.FormData()
+                form.add_field("init_image", image_bytes, filename="image.png", content_type="image/png")
+                form.add_field(
+                    "text_prompts",
+                    json.dumps([{"text": prompt, "weight": 1.0}]),
+                    content_type="application/json"
+                )
+                form.add_field("image_strength", "0.35")
+                form.add_field("output_format", "png")
                 if mask_bytes:
-                    files["mask"] = ("mask.png", mask_bytes, "image/png")
+                    form.add_field("mask", mask_bytes, filename="mask.png", content_type="image/png")
 
                 response = await client.post(
                     url,
-                    files=files,
+                    content=form,
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
                     },
