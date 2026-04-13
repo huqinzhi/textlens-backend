@@ -3,11 +3,65 @@ Stability AI API 客户端封装
 负责图片编辑和生成调用
 """
 import base64
+import io
 from typing import Optional
 import httpx
+from PIL import Image
 
 from app.config import settings
 from app.core.exceptions import ExternalServiceError, ContentModerationError
+
+
+# SDXL 允许的尺寸映射表
+SDXL_ALLOWED_DIMENSIONS = [
+    (1024, 1024),
+    (1152, 896),
+    (1216, 832),
+    (1344, 768),
+    (1536, 640),
+    (640, 1536),
+    (768, 1344),
+    (832, 1216),
+    (896, 1152),
+]
+
+
+def resize_image_for_sdxl(image_bytes: bytes) -> bytes:
+    """
+    将图片缩放到 SDXL 允许的尺寸
+
+    [image_bytes] 原始图片字节数据
+    返回缩放后的图片字节数据
+    """
+    img = Image.open(io.BytesIO(image_bytes))
+    orig_width, orig_height = img.size
+
+    # 计算目标尺寸（选择最接近的允许尺寸，保持宽高比）
+    target_width, target_height = orig_width, orig_height
+    min_diff = float('inf')
+
+    for w, h in SDXL_ALLOWED_DIMENSIONS:
+        # 检查宽高比是否接近
+        orig_ratio = orig_width / orig_height
+        new_ratio = w / h
+        ratio_diff = abs(orig_ratio - new_ratio)
+        area_diff = abs((w * h) - (orig_width * orig_height))
+
+        # 综合考虑宽高比和面积
+        score = ratio_diff * 10000 + area_diff / 1000000
+        if score < min_diff:
+            min_diff = score
+            target_width, target_height = w, h
+
+    # 如果原始尺寸已经是允许的，直接返回
+    if (orig_width, orig_height) in SDXL_ALLOWED_DIMENSIONS:
+        return image_bytes
+
+    # 缩放图片
+    img_resized = img.resize((target_width, target_height), Image.LANCZOS)
+    output = io.BytesIO()
+    img_resized.save(output, format=img.format or 'PNG')
+    return output.getvalue()
 
 
 class StabilityAIClient:
@@ -50,6 +104,8 @@ class StabilityAIClient:
 
         try:
             import json
+            # 缩放图片到 SDXL 允许的尺寸
+            image_bytes = resize_image_for_sdxl(image_bytes)
             async with httpx.AsyncClient(timeout=120.0) as client:
                 # 构造 multipart/form-data 请求
                 # 使用 list of tuples 格式：(field_name, (filename, content, content_type)) 或 (field_name, content)
