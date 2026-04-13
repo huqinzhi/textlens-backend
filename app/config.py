@@ -5,6 +5,7 @@ TextLens 后端配置模块
 """
 
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import List, Optional
 from functools import lru_cache
 
@@ -130,6 +131,26 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+
+    @model_validator(mode="after")
+    def _resolve_storage_on_init(self):
+        """
+        Pydantic 模型验证器，在所有字段解析完成后自动调用
+
+        将 R2 凭证映射到 S3 兼容字段，供 S3Client 统一使用。
+        """
+        if self.USE_R2:
+            self.S3_ACCESS_KEY = self.R2_ACCESS_KEY_ID
+            self.S3_SECRET_KEY = self.R2_SECRET_ACCESS_KEY
+            self.S3_REGION = self.R2_ACCOUNT_ID if self.R2_ACCOUNT_ID else "auto"
+            self.S3_ENDPOINT_URL = self.R2_ENDPOINT_URL
+            self.S3_BUCKET_NAME = self.R2_BUCKET_NAME
+        elif self.AWS_ACCESS_KEY_ID:
+            self.S3_ACCESS_KEY = self.AWS_ACCESS_KEY_ID
+            self.S3_SECRET_KEY = self.AWS_SECRET_ACCESS_KEY
+            self.S3_BUCKET_NAME = self.AWS_S3_BUCKET_NAME
+            self.S3_REGION = self.AWS_S3_REGION
+        return self
 
 
 @lru_cache()
