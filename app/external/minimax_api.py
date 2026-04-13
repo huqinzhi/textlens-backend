@@ -88,8 +88,15 @@ class MiniMaxClient:
 
             result = response.json()
 
+            # 调试：打印完整响应
+            logger.info(f"[MiniMax] Response status: {response.status_code}")
+            logger.info(f"[MiniMax] Response body: {result}")
+
             # 解析响应
-            items = result.get("data", {}).get("items", [])
+            data = result.get("data")
+            if data is None:
+                raise ExternalServiceError("MiniMax", f"Invalid response: {result}")
+            items = data.get("items", [])
             if not items:
                 raise ExternalServiceError("MiniMax", "No image generated")
 
