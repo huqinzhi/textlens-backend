@@ -46,7 +46,7 @@ class StabilityAIClient:
         if not self.api_key:
             raise ExternalServiceError("Stability AI", "API key not configured")
 
-        url = f"{self.BASE_URL}/generation/{self.engine_id}/image editing"
+        url = f"{self.BASE_URL}/generation/{self.engine_id}/image-to-image"
 
         # 将原图编码为 base64
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
