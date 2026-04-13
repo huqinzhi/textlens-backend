@@ -151,16 +151,23 @@ async def _execute_generation(
     image_height = ocr_data.get("image_height", 1024)
     detected_language = ocr_data.get("detected_language", "en")
 
-    # 使用 PIL 直接渲染文字（稳定性优先，AI inpainting 文字替换效果不佳）
-    logger.info(f"[Generation] Rendering text with PIL for task: {task.id}")
+    # 使用 Stability AI 生成
+    logger.info(f"[Generation] Using Stability AI provider for task: {task.id}")
 
-    result_bytes = _render_text_with_pil(
-        original_bytes=original_bytes,
-        edit_blocks=edit_blocks,
-        ocr_blocks=ocr_blocks,
-        image_width=image_width,
-        image_height=image_height,
+    # 构建 Stability AI 提示词
+    prompt = _build_stability_prompt(ocr_blocks, edit_blocks, image_width, image_height, detected_language)
+
+    # 根据编辑区域创建 mask
+    mask_bytes = _build_edit_mask(edit_blocks, ocr_blocks, image_width, image_height)
+
+    result_b64 = await stability_client.edit_image(
+        image_bytes=original_bytes,
+        prompt=prompt,
+        mask_bytes=mask_bytes,
     )
+
+    # 将 base64 结果解码为字节
+    result_bytes = base64.b64decode(result_b64)
 
     # 上传结果图片到 S3
     result_url = await s3_client.upload_result(result_bytes, "image/png")
@@ -227,21 +234,20 @@ def _build_stability_prompt(
     regions_text = "\n".join(regions_list)
 
     # Stability AI 提示词格式
-    prompt = f"""Text replacement only. You are doing precise text inpainting - ONLY replace the text, nothing else.
+    # 使用更具体的视觉描述来引导 AI 生成正确的文字
+    prompt = f"""Edit and modify the characters in the specified text region.
 
 Image dimensions: {image_width}x{image_height} pixels, Language: {detected_language}
 
 Text modifications:
 {regions_text}
 
-STRICT requirements:
-1. Replace ONLY the exact text specified above with the new text
-2. NO background color - the text area must be transparent/clear, same as surrounding area
-3. NO new elements, shapes, or decorations - only the text itself
-4. Text must be clean, crisp, sharp - not blurry or distorted
-5. Preserve the exact same font style, size, weight as the original text would have had
-6. Do NOT change, modify, or affect ANY other part of the image
-7. The result should look exactly as if only the text characters were swapped"""
+Requirements:
+1. Only modify the characters within the specified bounding box/region
+2. The surrounding area, background, and all other elements must remain UNCHANGED
+3. Generate clear, readable text that is visually consistent with the original text style
+4. The text should be sharp and properly rendered
+5. Match the approximate size, position, and general appearance of the original text"""
 
     return prompt
 
