@@ -142,7 +142,7 @@ class Settings(BaseSettings):
         if self.USE_R2:
             self.S3_ACCESS_KEY = self.R2_ACCESS_KEY_ID
             self.S3_SECRET_KEY = self.R2_SECRET_ACCESS_KEY
-            self.S3_REGION = self.R2_ACCOUNT_ID if self.R2_ACCOUNT_ID else "auto"
+            self.S3_REGION = "auto"
             self.S3_ENDPOINT_URL = self.R2_ENDPOINT_URL
             self.S3_BUCKET_NAME = self.R2_BUCKET_NAME
         elif self.AWS_ACCESS_KEY_ID:
