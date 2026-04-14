@@ -106,7 +106,7 @@ class Settings(BaseSettings):
 
     # ── Google AI 生图配置 ──────────────────────────────────────────
     GOOGLE_AI_API_KEY: Optional[str] = None
-    GOOGLE_AI_IMAGE_MODEL: str = "gemini-3.1-flash-image-preview"  # 图片编辑模型
+    GOOGLE_AI_IMAGE_MODEL: str = "gemini-2.0-flash"  # 图片编辑模型
 
     # ── MiniMax 生图配置（已弃用）────────────────────────────────────
     MINIMAX_API_KEY: Optional[str] = None
