@@ -21,8 +21,8 @@ class AliyunClient:
     支持美国节点 API。
     """
 
-    # 阿里云百炼 API - 多模态生成（美国节点）
-    BASE_URL = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+    # 阿里云百炼 API - 多模态生成（北京节点）
+    BASE_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
     def __init__(self):
         self.api_key = settings.ALIYUN_API_KEY
