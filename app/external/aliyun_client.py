@@ -21,9 +21,9 @@ class AliyunClient:
     支持美国节点 API，使用 SDK 兼容的 HTTP 调用方式。
     """
 
-    # 阿里云百炼 API - 图像生成（美国节点）
-    # SDK 风格端点
-    BASE_URL = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/image_generation/image_generation"
+    # 阿里云百炼 API - 多模态生成（美国节点弗吉尼亚）
+    # 正确端点：/services/aigc/multimodal-generation/generation
+    BASE_URL = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
     def __init__(self):
         self.api_key = settings.ALIYUN_API_KEY
@@ -53,25 +53,28 @@ class AliyunClient:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
         # 图像编辑模式：enable_interleave=False
-        # 参考 SDK 示例的请求格式
+        # 参考官方文档的请求格式：input.messages + parameters
         payload = {
             "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"text": prompt},
-                        {"image": f"data:image/jpeg;base64,{image_b64}"},
-                    ]
-                }
-            ],
-            "negative_prompt": "",
-            "prompt_extend": True,
-            "watermark": False,
-            "n": 1,
-            "enable_interleave": False,
-            "size": "1K",
-            "ref_strength": strength,
+            "input": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"text": prompt},
+                            {"image": f"data:image/jpeg;base64,{image_b64}"},
+                        ]
+                    }
+                ]
+            },
+            "parameters": {
+                "prompt_extend": True,
+                "watermark": False,
+                "n": 1,
+                "enable_interleave": False,
+                "size": "1K",
+                "ref_strength": strength,
+            },
         }
 
         try:
