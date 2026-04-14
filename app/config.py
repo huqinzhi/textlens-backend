@@ -104,13 +104,17 @@ class Settings(BaseSettings):
     OCR_SPACE_API_KEY: Optional[str] = None
     OCR_PROVIDER: str = "ocr_space"  # "google_vision" 或 "ocr_space"
 
+    # ── 阿里云百炼生图配置 ────────────────────────────────────
+    ALIYUN_API_KEY: Optional[str] = None
+    ALIYUN_IMAGE_MODEL: str = "wanxiang-image-edit"
+
     # ── Cloudflare AI 生图配置 ────────────────────────────────────
     CF_ACCOUNT_ID: Optional[str] = None
     CF_API_TOKEN: Optional[str] = None
     CF_IMAGE_MODEL: str = "@cf/runwayml/stable-diffusion-v1-5-inpainting"
 
     # ── Google AI 生图配置 ────────────────────────────────────────
-    GOOGLE_AI_API_KEY: Optional[str] = "AIzaSyDIQsrtFgQwry3D67XdW8cFKCDzC3CCmOs"
+    GOOGLE_AI_API_KEY: Optional[str] = None
     GOOGLE_AI_IMAGE_MODEL: str = "gemini-3.1-flash-preview"
 
     # ── Flux 生图配置（已弃用）────────────────────────────────────

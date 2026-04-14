@@ -1,6 +1,6 @@
 """
 AI 图片生成 Celery 任务
-处理 Cloudflare AI 图片编辑的异步任务：下载原图、提取视觉风格、构建提示词、调用SD img2img API、上传结果、更新状态
+处理阿里云百炼图片编辑的异步任务：下载原图、提取视觉风格、构建提示词、调用wanxiang API、上传结果、更新状态
 """
 import base64
 import logging
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.db.models.image import GenerationTask
-from app.external.cloudflare_ai_client import CloudflareAIClient
+from app.external.aliyun_client import AliyunClient
 from app.external.s3_client import S3Client
 from app.core.constants import TaskStatus
 
@@ -26,7 +26,7 @@ class GenerationTaskBase(Task):
     """
 
     _db: Session = None
-    _cloudflare_ai_client: CloudflareAIClient = None
+    _aliyun_client: AliyunClient = None
     _s3_client: S3Client = None
 
     @property
@@ -37,11 +37,11 @@ class GenerationTaskBase(Task):
         return self._db
 
     @property
-    def cloudflare_ai_client(self) -> CloudflareAIClient:
-        """懒加载 Cloudflare AI 客户端"""
-        if self._cloudflare_ai_client is None:
-            self._cloudflare_ai_client = CloudflareAIClient()
-        return self._cloudflare_ai_client
+    def aliyun_client(self) -> AliyunClient:
+        """懒加载阿里云百炼客户端"""
+        if self._aliyun_client is None:
+            self._aliyun_client = AliyunClient()
+        return self._aliyun_client
 
     @property
     def s3_client(self) -> S3Client:
@@ -93,7 +93,7 @@ def process_generation(self, task_id: str) -> dict:
 
     try:
         result_url = asyncio.get_event_loop().run_until_complete(
-            _execute_generation(task, self.cloudflare_ai_client, self.s3_client)
+            _execute_generation(task, self.aliyun_client, self.s3_client)
         )
 
         # 更新任务状态为完成
@@ -124,20 +124,20 @@ def process_generation(self, task_id: str) -> dict:
 
 async def _execute_generation(
     task: GenerationTask,
-    cloudflare_ai_client: CloudflareAIClient,
+    aliyun_client: AliyunClient,
     s3_client: S3Client,
 ) -> str:
     """
     执行图片生成的核心异步逻辑
 
-    使用 Cloudflare AI Stable Diffusion img2img 进行图片编辑：
+    使用阿里云百炼 wanxiang-image-edit 进行图片编辑：
     1. 下载原始图片
     2. 提取每个编辑区域的视觉风格
     3. 构建包含原文→新文和风格信息的提示词
-    4. 调用 SD img2img 直接生成
+    4. 调用 wanxiang-image-edit 直接生成
 
     [task] 数据库中的生成任务记录
-    [cloudflare_ai_client] Cloudflare AI 客户端
+    [aliyun_client] 阿里云百炼客户端
     [s3_client] S3 存储客户端
     返回生成图片的 S3 URL
     """
@@ -172,23 +172,17 @@ async def _execute_generation(
         style = await extract_text_region_style(original_bytes, abs_x, abs_y, abs_w, abs_h)
         visual_styles[block_id] = style
 
-    # 构建 Stable Diffusion 提示词（包含原文→新文映射和视觉风格）
-    prompt = _build_sd_prompt(
+    # 构建阿里云百炼提示词（包含原文→新文映射和视觉风格）
+    prompt = _build_aliyun_prompt(
         ocr_blocks, edit_blocks, image_width, image_height, detected_language, visual_styles
     )
 
-    # 创建 mask（白色区域表示要替换的文字区域）
-    mask_bytes = CloudflareAIClient.create_mask(
-        image_width, image_height, edit_blocks, ocr_blocks
-    )
-
-    # 调用 Cloudflare AI SD inpainting 进行图片编辑
-    logger.info(f"[Generation] Using Cloudflare SD inpainting for task: {task.id}")
-    result_b64 = await cloudflare_ai_client.edit_image(
+    # 调用阿里云百炼进行图片编辑
+    logger.info(f"[Generation] Using Aliyun wanxiang for task: {task.id}")
+    result_b64 = await aliyun_client.edit_image(
         image_bytes=original_bytes,
         prompt=prompt,
-        mask_bytes=mask_bytes,
-        guidance=7.5,
+        strength=0.4,  # 越小越保真
     )
 
     # 将 base64 结果解码为字节
@@ -200,7 +194,7 @@ async def _execute_generation(
     return result_url
 
 
-def _build_sd_prompt(
+def _build_aliyun_prompt(
     ocr_blocks: list[dict],
     edit_blocks: list[dict],
     image_width: int,
@@ -209,9 +203,9 @@ def _build_sd_prompt(
     visual_styles: dict[str, dict] | None = None,
 ) -> str:
     """
-    构建 Stable Diffusion 图片编辑提示词
+    构建阿里云百炼图片编辑提示词
 
-    将 OCR 文字块和编辑指令转化为 Stable Diffusion 的提示词格式，
+    将 OCR 文字块和编辑指令转化为阿里云百炼的提示词格式，
     详细描述原文→新文映射、文字位置、视觉风格等信息。
 
     [ocr_blocks] 原始 OCR 识别文字块列表
@@ -220,7 +214,7 @@ def _build_sd_prompt(
     [image_height] 图片高度
     [detected_language] 检测到的文字语言
     [visual_styles] 文字区域的视觉风格信息
-    返回 Stable Diffusion 格式的提示词
+    返回阿里云百炼格式的提示词
     """
     # 构建原文 → 文字块数据的映射
     ocr_map = {b.get("id"): b for b in ocr_blocks}
@@ -271,8 +265,8 @@ def _build_sd_prompt(
 
     regions_text = "\n".join(regions_list)
 
-    # Stable Diffusion 提示词格式
-    prompt = f"""图片文字编辑任务。请严格按照以下要求修改指定位置的文字。
+    # 阿里云百炼提示词格式
+    prompt = f"""将图片中的文字按以下要求修改：
 
 图片信息：
 - 尺寸：{image_width}x{image_height} 像素
