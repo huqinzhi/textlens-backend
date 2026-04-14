@@ -177,12 +177,17 @@ async def _execute_generation(
         ocr_blocks, edit_blocks, image_width, image_height, detected_language, visual_styles
     )
 
-    # 调用 Cloudflare AI SD img2img 进行图片编辑
-    logger.info(f"[Generation] Using Cloudflare SD img2img for task: {task.id}")
+    # 创建 mask（白色区域表示要替换的文字区域）
+    mask_bytes = CloudflareAIClient.create_mask(
+        image_width, image_height, edit_blocks, ocr_blocks
+    )
+
+    # 调用 Cloudflare AI SD inpainting 进行图片编辑
+    logger.info(f"[Generation] Using Cloudflare SD inpainting for task: {task.id}")
     result_b64 = await cloudflare_ai_client.edit_image(
         image_bytes=original_bytes,
         prompt=prompt,
-        strength=0.7,
+        mask_bytes=mask_bytes,
         guidance=7.5,
     )
 

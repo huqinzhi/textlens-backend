@@ -107,7 +107,7 @@ class Settings(BaseSettings):
     # ── Cloudflare AI 生图配置 ────────────────────────────────────
     CF_ACCOUNT_ID: Optional[str] = None
     CF_API_TOKEN: Optional[str] = None
-    CF_IMAGE_MODEL: str = "@cf/runwayml/stable-diffusion-v1-5-img2img"
+    CF_IMAGE_MODEL: str = "@cf/runwayml/stable-diffusion-v1-5-inpainting"
 
     # ── Flux 生图配置（已弃用）────────────────────────────────────
     FLUX_API_KEY: Optional[str] = None

@@ -73,13 +73,20 @@ async def test_cloudflare_edit():
     prompt = _build_sd_prompt(ocr_blocks, edit_blocks, img_width, img_height, "zh", visual_styles)
     print(f"Prompt:\n{prompt}\n")
 
+    # 创建 mask
+    from app.external.cloudflare_ai_client import CloudflareAIClient
+    mask_bytes = CloudflareAIClient.create_mask(
+        img_width, img_height, edit_blocks, ocr_blocks
+    )
+    print(f"Mask size: {len(mask_bytes)} bytes")
+
     # 调用 Cloudflare AI
     cf = CloudflareAIClient()
-    print("Calling Cloudflare AI SD img2img...")
+    print("Calling Cloudflare AI SD inpainting...")
     result_b64 = await cf.edit_image(
         image_bytes=image_bytes,
         prompt=prompt,
-        strength=0.7,
+        mask_bytes=mask_bytes,
         guidance=7.5,
     )
     print(f"Generated image size: {len(result_b64)} bytes (base64)")
