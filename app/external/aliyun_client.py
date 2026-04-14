@@ -18,7 +18,7 @@ class AliyunClient:
     阿里云百炼 API 客户端
 
     使用阿里云百炼的 wan2.6-image 模型进行图片编辑。
-    支持美国节点 API，使用流式输出。
+    支持美国节点 API。
     """
 
     # 阿里云百炼 API - 多模态生成（美国节点）
@@ -42,7 +42,7 @@ class AliyunClient:
 
         [image_bytes] 原始图片字节数据
         [prompt] 图片编辑提示词
-        [strength] 修改强度 (0-1)，越小越保真，0.3-0.5 最合适
+        [strength] ref_strength 修改强度 (0-1)，越小越保真，0.3-0.5 最合适
         返回生成图片的 base64 编码字符串
         """
         if not self.api_key:
@@ -51,8 +51,7 @@ class AliyunClient:
         # 将图片转换为 base64
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        # 构建多模态消息格式
-        # 美国节点必须启用流式输出
+        # 图像编辑模式：enable_interleave=false，使用非流式同步调用
         payload = {
             "model": self.model,
             "input": {
@@ -61,83 +60,73 @@ class AliyunClient:
                         "role": "user",
                         "content": [
                             {
-                                "image": f"data:image/jpeg;base64,{image_b64}",
                                 "text": prompt,
-                            }
+                            },
+                            {
+                                "image": f"data:image/jpeg;base64,{image_b64}",
+                            },
                         ]
                     }
                 ]
             },
             "parameters": {
-                "size": "1024*1024",
+                "size": "1K",
                 "ref_strength": strength,
-                "ref_mode": "repaint",
-                "stream": True,
-                "enable_interleave": True,
+                "enable_interleave": False,
+                "n": 1,
+                "prompt_extend": True,
+                "watermark": False,
             },
         }
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
-                async with client.stream(
-                    "POST",
+                response = await client.post(
                     self.BASE_URL,
                     json=payload,
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json",
-                        "X-DashScope-Sse": "enable",
                     },
-                ) as response:
-                    if response.status_code != 200:
-                        error_msg = ""
-                        async for line in response.aiter_lines():
-                            if line.startswith("data:"):
-                                data = line[5:].strip()
-                                if data and data != "[DONE]":
-                                    try:
-                                        import json
-                                        msg = json.loads(data)
-                                        error_msg = msg.get("error", {}).get("message", "")
-                                        if error_msg:
-                                            break
-                                    except:
-                                        pass
-                        logger.error(f"[Aliyun] API error: status={response.status_code}, error={error_msg}")
-                        raise ExternalServiceError("Aliyun", f"API error: status={response.status_code}, error={error_msg}")
+                )
 
-                    # 解析 SSE 流式响应
-                    image_url = None
-                    async for line in response.aiter_lines():
-                        if line.startswith("data:"):
-                            data = line[5:].strip()
-                            if data and data != "[DONE]":
-                                try:
-                                    import json
-                                    msg = json.loads(data)
-                                    # 查找图片
-                                    output = msg.get("output", {})
-                                    choices = output.get("choices", [])
-                                    if choices:
-                                        message = choices[0].get("message", {})
-                                        content = message.get("content", [])
-                                        for item in content:
-                                            if isinstance(item, dict) and item.get("image"):
-                                                image_url = item["image"]
-                                                break
-                                            elif isinstance(item, dict) and item.get("image_url"):
-                                                image_url = item["image_url"]
-                                                break
-                                    if image_url:
-                                        break
-                                except Exception as e:
-                                    logger.warning(f"[Aliyun] Failed to parse SSE message: {e}")
-                                    continue
+            if response.status_code != 200:
+                error_msg = response.text or "empty response"
+                logger.error(f"[Aliyun] API error: status={response.status_code}, body={error_msg}")
+                if "content_policy" in error_msg.lower() or "nsfw" in error_msg.lower():
+                    raise ContentModerationError("Image content policy violation")
+                raise ExternalServiceError("Aliyun", f"API error: status={response.status_code}, body={error_msg}")
 
-                    if not image_url:
-                        raise ExternalServiceError("Aliyun", "No image URL in streaming response")
+            result = response.json()
+            logger.info(f"[Aliyun] Response: {result}")
 
-                    return await self._download_image_as_base64(image_url)
+            # 检查是否有错误
+            if "error" in result:
+                error_msg = result.get("error", {}).get("message", "Unknown error")
+                raise ExternalServiceError("Aliyun", f"API error: {error_msg}")
+
+            # 解析响应
+            # 格式: output.choices[0].message.content[].image
+            output = result.get("output", {})
+            choices = output.get("choices", [])
+
+            if not choices:
+                raise ExternalServiceError("Aliyun", f"No choices in response: {result}")
+
+            message = choices[0].get("message", {})
+            content = message.get("content", [])
+
+            if not content:
+                raise ExternalServiceError("Aliyun", f"No content in message: {result}")
+
+            # 查找图片
+            for item in content:
+                if isinstance(item, dict):
+                    image_url = item.get("image")
+                    if image_url:
+                        return await self._download_image_as_base64(image_url)
+
+            raise ExternalServiceError("Aliyun", f"No image in response content: {content}")
 
         except ContentModerationError:
             raise
