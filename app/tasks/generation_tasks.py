@@ -9,10 +9,15 @@ from sqlalchemy.orm import Session
 
 from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
-from app.db.models.image import GenerationTask
 from app.external.aliyun_client import AliyunClient
 from app.external.s3_client import S3Client
 from app.core.constants import TaskStatus
+
+# 显式导入所有模型，确保 SQLAlchemy 映射器正确注册
+# 避免 relationship("User") 等字符串引用无法解析的问题
+from app.db.models.user import User
+from app.db.models.image import Image, OCRResult, GenerationTask
+from app.db.models.credit import CreditAccount, CreditTransaction, DailyFreeUsage
 
 logger = logging.getLogger(__name__)
 

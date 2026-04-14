@@ -8,9 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
-from app.db.models.image import Image, OCRResult, ImageStatus
 from app.external.google_vision import GoogleVisionClient
 from app.external.s3_client import S3Client
+
+# 显式导入所有模型，确保 SQLAlchemy 映射器正确注册
+from app.db.models.user import User
+from app.db.models.image import Image, OCRResult, GenerationTask, ImageStatus
+from app.db.models.credit import CreditAccount, CreditTransaction, DailyFreeUsage
 
 logger = logging.getLogger(__name__)
 
