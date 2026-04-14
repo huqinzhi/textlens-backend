@@ -65,7 +65,7 @@ class GoogleAIClient:
                 }
             ],
             "generationConfig": {
-                "responseModalities": ["IMAGE", "TEXT"],
+                "responseModalities": ["IMAGE"],
             },
         }
 
