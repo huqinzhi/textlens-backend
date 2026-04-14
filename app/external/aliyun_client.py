@@ -18,11 +18,12 @@ class AliyunClient:
     阿里云百炼 API 客户端
 
     使用阿里云百炼的 wan2.6-image 模型进行图片编辑。
-    支持美国节点 API。
+    支持美国节点 API，使用 SDK 兼容的 HTTP 调用方式。
     """
 
-    # 阿里云百炼 API - 多模态生成（美国节点）
-    BASE_URL = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+    # 阿里云百炼 API - 图像生成（美国节点）
+    # SDK 风格端点
+    BASE_URL = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/image_generation/image_generation"
 
     def __init__(self):
         self.api_key = settings.ALIYUN_API_KEY
@@ -51,32 +52,26 @@ class AliyunClient:
         # 将图片转换为 base64
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        # 图像编辑模式：enable_interleave=false，使用非流式同步调用
+        # 图像编辑模式：enable_interleave=False
+        # 参考 SDK 示例的请求格式
         payload = {
             "model": self.model,
-            "input": {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "text": prompt,
-                            },
-                            {
-                                "image": f"data:image/jpeg;base64,{image_b64}",
-                            },
-                        ]
-                    }
-                ]
-            },
-            "parameters": {
-                "size": "1K",
-                "ref_strength": strength,
-                "enable_interleave": False,
-                "n": 1,
-                "prompt_extend": True,
-                "watermark": False,
-            },
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"text": prompt},
+                        {"image": f"data:image/jpeg;base64,{image_b64}"},
+                    ]
+                }
+            ],
+            "negative_prompt": "",
+            "prompt_extend": True,
+            "watermark": False,
+            "n": 1,
+            "enable_interleave": False,
+            "size": "1K",
+            "ref_strength": strength,
         }
 
         try:
@@ -101,9 +96,9 @@ class AliyunClient:
             logger.info(f"[Aliyun] Response: {result}")
 
             # 检查是否有错误
-            if "error" in result:
-                error_msg = result.get("error", {}).get("message", "Unknown error")
-                raise ExternalServiceError("Aliyun", f"API error: {error_msg}")
+            if result.get("code") and result.get("code") != "":
+                error_msg = result.get("message", "Unknown error")
+                raise ExternalServiceError("Aliyun", f"API error: code={result.get('code')}, message={error_msg}")
 
             # 解析响应
             # 格式: output.choices[0].message.content[].image
