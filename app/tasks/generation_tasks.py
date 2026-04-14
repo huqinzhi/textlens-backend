@@ -89,7 +89,7 @@ def process_generation(self, task_id: str) -> dict:
         logger.error(f"[Generation] Task not found: {task_id}")
         return {"error": "Task not found"}
 
-    if task.status.value == TaskStatus.cancelled.value:
+    if task.status.value == TaskStatus.CANCELLED.value:
         logger.info(f"[Generation] Task cancelled, skipping: {task_id}")
         return {"status": "cancelled"}
 
