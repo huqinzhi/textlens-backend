@@ -18,6 +18,7 @@ from app.core.constants import TaskStatus
 from app.db.models.user import User
 from app.db.models.image import Image, OCRResult, GenerationTask
 from app.db.models.credit import CreditAccount, CreditTransaction, DailyFreeUsage
+from app.db.models.payment import PurchaseRecord
 
 logger = logging.getLogger(__name__)
 

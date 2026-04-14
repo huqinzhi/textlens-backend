@@ -15,6 +15,7 @@ from app.external.s3_client import S3Client
 from app.db.models.user import User
 from app.db.models.image import Image, OCRResult, GenerationTask, ImageStatus
 from app.db.models.credit import CreditAccount, CreditTransaction, DailyFreeUsage
+from app.db.models.payment import PurchaseRecord
 
 logger = logging.getLogger(__name__)
 
