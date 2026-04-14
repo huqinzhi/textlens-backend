@@ -104,17 +104,21 @@ class Settings(BaseSettings):
     OCR_SPACE_API_KEY: Optional[str] = None
     OCR_PROVIDER: str = "ocr_space"  # "google_vision" 或 "ocr_space"
 
-    # ── Google AI 生图配置 ──────────────────────────────────────────
+    # ── Flux 生图配置 ───────────────────────────────────────────────
+    FLUX_API_KEY: Optional[str] = None
+    FLUX_MODEL: Optional[str] = "flux-schnell"  # flux-schnell / flux-dev
+
+    # ── Google AI 生图配置（已弃用）────────────────────────────────
     GOOGLE_AI_API_KEY: Optional[str] = None
-    GOOGLE_AI_IMAGE_MODEL: str = "gemini-2.0-flash-image-preview"  # 图片编辑模型
+    GOOGLE_AI_IMAGE_MODEL: str = "gemini-3.1-flash-image-preview"
 
     # ── MiniMax 生图配置（已弃用）────────────────────────────────────
     MINIMAX_API_KEY: Optional[str] = None
-    MINIMAX_IMAGE_MODEL: str = "image-01"  # 默认生图模型: image-01 / image-01-live
+    MINIMAX_IMAGE_MODEL: str = "image-01"
 
     # ── Stability AI 生图配置（已弃用）────────────────────────────────
     STABILITY_API_KEY: Optional[str] = None
-    STABILITY_ENGINE_ID: str = "stable-diffusion-xl-1024-v1-0"  # 默认生图引擎
+    STABILITY_ENGINE_ID: str = "stable-diffusion-xl-1024-v1-0"
 
     # ── Celery 任务队列 URL（别名）─────────────────────────────────────
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
