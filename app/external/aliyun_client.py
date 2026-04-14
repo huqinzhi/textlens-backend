@@ -1,6 +1,6 @@
 """
 阿里云百炼 API 客户端封装
-负责图片编辑调用（使用 wanxiang-image-edit 模型）
+负责图片编辑调用（使用 wan2.6-image 模型）
 """
 import base64
 import logging
@@ -17,17 +17,16 @@ class AliyunClient:
     """
     阿里云百炼 API 客户端
 
-    使用阿里云百炼的 wanx-v1 或 qwen-image-plus 模型进行图片编辑。
-    支持海外节点 API。
+    使用阿里云百炼的 wan2.6-image 模型进行图片编辑。
+    支持美国节点 API。
     """
 
-    # 阿里云百炼 API - 图生图（美国节点）
-    # 美国节点: https://dashscope-us.aliyuncs.com/api/v1
-    BASE_URL = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+    # 阿里云百炼 API - 多模态生成（美国节点）
+    BASE_URL = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
     def __init__(self):
         self.api_key = settings.ALIYUN_API_KEY
-        self.model = settings.ALIYUN_IMAGE_MODEL or "wan2.5-i2i-preview"
+        self.model = settings.ALIYUN_IMAGE_MODEL or "wan2.6-image"
 
     async def edit_image(
         self,
@@ -38,12 +37,12 @@ class AliyunClient:
         """
         使用阿里云百炼进行图片编辑
 
-        调用 wanx-v1 模型配合 ref_image 参考图进行图片编辑，
+        调用 wan2.6-image 模型进行图片编辑，
         返回生成图片的 base64 数据。
 
         [image_bytes] 原始图片字节数据
         [prompt] 图片编辑提示词
-        [strength] ref_strength 修改强度 (0-1)，越小越保真，0.3-0.5 最合适
+        [strength] 修改强度 (0-1)，越小越保真，0.3-0.5 最合适
         返回生成图片的 base64 编码字符串
         """
         if not self.api_key:
@@ -52,11 +51,22 @@ class AliyunClient:
         # 将图片转换为 base64
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
+        # 构建多模态消息格式
+        # ref_mode 可选: repaint(重绘) / refonly(仅参考)
         payload = {
             "model": self.model,
             "input": {
-                "prompt": prompt,
-                "ref_image": image_b64,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "image": f"data:image/jpeg;base64,{image_b64}",
+                                "text": prompt,
+                            }
+                        ]
+                    }
+                ]
             },
             "parameters": {
                 "size": "1024*1024",
@@ -73,7 +83,6 @@ class AliyunClient:
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json",
-                        "X-DashScope-Async": "enable",
                     },
                 )
 
@@ -92,27 +101,22 @@ class AliyunClient:
                 error_msg = result.get("error", {}).get("message", "Unknown error")
                 raise ExternalServiceError("Aliyun", f"API error: {error_msg}")
 
-            # 解析响应 - 图片生成返回 task_id，需要等待任务完成
+            # 解析响应
             output = result.get("output", {})
-            task_id = output.get("task_id")
-            task_status = output.get("task_status", "")
+            choices = output.get("choices", [])
 
-            if task_status == "SUCCEEDED":
-                # 同步模式直接返回结果
-                results = output.get("results", [])
-                if results:
-                    image_url = results[0].get("url")
-                    if image_url:
-                        # 下载图片并返回 base64
+            if choices:
+                message = choices[0].get("message", {})
+                content = message.get("content", [])
+                for item in content:
+                    if isinstance(item, dict) and item.get("image_url"):
+                        image_url = item.get("image_url")
                         return await self._download_image_as_base64(image_url)
-                raise ExternalServiceError("Aliyun", "No image URL in response")
+                    elif isinstance(item, dict) and item.get("url"):
+                        image_url = item.get("url")
+                        return await self._download_image_as_base64(image_url)
 
-            elif task_id:
-                # 异步模式，等待任务完成
-                image_url = await self._wait_for_task(task_id)
-                return await self._download_image_as_base64(image_url)
-
-            raise ExternalServiceError("Aliyun", f"Unexpected response: {result}")
+            raise ExternalServiceError("Aliyun", f"Unexpected response format: {result}")
 
         except ContentModerationError:
             raise
@@ -129,50 +133,6 @@ class AliyunClient:
                 raise ContentModerationError(f"Image content policy violation: {e}")
             logger.error(f"[Aliyun] Unexpected error: {e}, response: {response.text if 'response' in dir() else 'N/A'}")
             raise ExternalServiceError("Aliyun", str(e))
-
-    async def _wait_for_task(self, task_id: str, max_wait_seconds: int = 120) -> str:
-        """
-        轮询等待异步任务完成
-
-        [task_id] 任务ID
-        [max_wait_seconds] 最大等待时间（秒）
-        返回生成图片的 URL
-        """
-        import asyncio
-        import time
-
-        task_url = f"https://dashscope-us.aliyuncs.com/api/v1/tasks/{task_id}"
-        start_time = time.time()
-
-        while time.time() - start_time < max_wait_seconds:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    task_url,
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                )
-
-            if response.status_code == 200:
-                result = response.json()
-                output = result.get("output", {})
-                status = output.get("task_status", "")
-
-                if status == "SUCCEEDED":
-                    results = output.get("results", [])
-                    if results:
-                        return results[0].get("url")
-                    raise ExternalServiceError("Aliyun", "Task succeeded but no image URL")
-
-                elif status == "FAILED":
-                    error_msg = output.get("message", "Task failed")
-                    raise ExternalServiceError("Aliyun", f"Task failed: {error_msg}")
-
-                # 继续等待
-                logger.info(f"[Aliyun] Task {task_id} status: {status}, waiting...")
-                await asyncio.sleep(3)
-            else:
-                raise ExternalServiceError("Aliyun", f"Failed to get task status: {response.text}")
-
-        raise ExternalServiceError("Aliyun", f"Task timeout after {max_wait_seconds} seconds")
 
     async def _download_image_as_base64(self, image_url: str) -> str:
         """
