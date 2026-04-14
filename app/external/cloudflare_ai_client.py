@@ -56,7 +56,7 @@ class CloudflareAIClient:
 
         payload = {
             "prompt": prompt,
-            "image": image_b64,
+            "image_b64": image_b64,
             "strength": strength,
             "guidance": guidance,
         }
