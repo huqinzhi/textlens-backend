@@ -248,14 +248,13 @@ def _build_aliyun_prompt(
         # 获取视觉风格描述
         style = visual_styles.get(block_id, {})
         text_color_desc = "浅色文字" if style.get("text_color") == "light" else "深色文字"
-        underline_desc = "有下划线" if style.get("has_underline") else "无下划线"
         avg_color = style.get("avg_color", [0, 0, 0])
         color_rgb = f"RGB({avg_color[0]}, {avg_color[1]}, {avg_color[2]})"
 
         region_desc = (
             f'将位置 ({abs_x},{abs_y})，尺寸 {abs_width}x{abs_height}px 的文字 '
             f'"{original_text}" 替换为 "{new_text}"。'
-            f'文字颜色：{text_color_desc}（{color_rgb}），{underline_desc}，'
+            f'文字颜色：{text_color_desc}（{color_rgb}），'
             f'字体大小与原图保持一致。'
         )
         regions_list.append(region_desc)
