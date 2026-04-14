@@ -78,11 +78,11 @@ class AliyunClient:
                 )
 
             if response.status_code != 200:
-                error_msg = response.text
-                logger.error(f"[Aliyun] API error: {response.status_code} - {error_msg}")
+                error_msg = response.text or "empty response"
+                logger.error(f"[Aliyun] API error: status={response.status_code}, headers={dict(response.headers)}, body={error_msg}")
                 if "content_policy" in error_msg.lower() or "nsfw" in error_msg.lower():
                     raise ContentModerationError("Image content policy violation")
-                raise ExternalServiceError("Aliyun", f"API error: {error_msg}")
+                raise ExternalServiceError("Aliyun", f"API error: status={response.status_code}, body={error_msg}")
 
             result = response.json()
             logger.info(f"[Aliyun] Response: {result}")
