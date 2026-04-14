@@ -1,8 +1,8 @@
 """
-测试 Google Gemini 图片生成
+测试 Google Gemini 图片编辑
 
-使用 OCR 图片进行文字编辑测试。
-模拟服务器上的完整流程：下载图片 -> 提取视觉风格 -> 构建提示词 -> 调用Gemini API -> 上传结果
+测试 Gemini 3.1 Flash Preview 的图片编辑功能。
+不同于 SD img2img，Gemini 可以精确编辑图片中的指定区域。
 """
 import asyncio
 import sys
@@ -19,8 +19,6 @@ from app.external.s3_client import S3Client
 async def test_gemini_edit():
     """
     测试 Gemini 图片编辑
-
-    下载 OCR 图片，修改文字并生成新图片。
     """
     image_url = "https://r2.hqzservice.top/uploads/bf1f401f-0748-4dca-966c-c600134b8fc5/7c8a703a2abb40f498316880034d6e13.jpeg"
 
@@ -35,8 +33,7 @@ async def test_gemini_edit():
     img_width, img_height = img.size
     print(f"Image dimensions: {img_width}x{img_height}")
 
-    # OCR 结果：文字 "18681264718" 在位置 (405, 539)，尺寸 440x93
-    # 这是归一化坐标 (0-1)
+    # OCR 结果
     ocr_blocks = [{
         "id": "block_1",
         "text": "18681264718",
@@ -46,14 +43,14 @@ async def test_gemini_edit():
         "height": 93 / img_height,
     }]
 
-    # 编辑指令：旧文字 -> 新文字
+    # 编辑指令
     edit_blocks = [{
         "id": "block_1",
         "original_text": "18681264718",
         "new_text": "测试测试",
     }]
 
-    # 提取视觉风格信息
+    # 提取视觉风格
     from app.external.google_vision import extract_text_region_style
     ocr_map = {b.get("id"): b for b in ocr_blocks}
     visual_styles = {}
@@ -72,24 +69,27 @@ async def test_gemini_edit():
         visual_styles[block_id] = style
         print(f"Visual style for {block_id}: {style}")
 
-    # 使用服务器上的提示词构建逻辑
-    from app.tasks.generation_tasks import _build_gemini_prompt
-
-    print("Building prompt...")
-    prompt = _build_gemini_prompt(ocr_blocks, edit_blocks, img_width, img_height, "zh", visual_styles)
+    # 构建提示词
+    from app.tasks.generation_tasks import _build_sd_prompt
+    prompt = _build_sd_prompt(ocr_blocks, edit_blocks, img_width, img_height, "zh", visual_styles)
     print(f"Prompt:\n{prompt}\n")
 
     # 调用 Gemini
     gemini = GoogleAIClient()
-    print("Calling Gemini...")
+    print("Calling Gemini 3.1 Flash...")
     result_b64 = await gemini.edit_image(
         image_bytes=image_bytes,
         prompt=prompt,
     )
     print(f"Generated image size: {len(result_b64)} bytes (base64)")
 
-    # 上传结果到 R2
+    # 保存本地
     result_bytes = base64.b64decode(result_b64)
+    with open("/tmp/gemini_gen.png", "wb") as f:
+        f.write(result_bytes)
+    print("Image saved to /tmp/gemini_gen.png")
+
+    # 上传到 R2
     result_url = await s3.upload_result(result_bytes, "image/png")
     print(f"Result URL: {result_url}")
 

@@ -109,6 +109,10 @@ class Settings(BaseSettings):
     CF_API_TOKEN: Optional[str] = None
     CF_IMAGE_MODEL: str = "@cf/runwayml/stable-diffusion-v1-5-inpainting"
 
+    # ── Google AI 生图配置 ────────────────────────────────────────
+    GOOGLE_AI_API_KEY: Optional[str] = "AIzaSyDIQsrtFgQwry3D67XdW8cFKCDzC3CCmOs"
+    GOOGLE_AI_IMAGE_MODEL: str = "gemini-3.1-flash-preview"
+
     # ── Flux 生图配置（已弃用）────────────────────────────────────
     FLUX_API_KEY: Optional[str] = None
     FLUX_MODEL: Optional[str] = "flux-schnell"
