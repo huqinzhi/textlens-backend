@@ -34,7 +34,7 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-async def create_tables():
+def create_tables():
     """
     创建所有数据库表
 

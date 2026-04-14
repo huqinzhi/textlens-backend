@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     在应用关闭时执行资源清理操作。
     """
     # 启动时：初始化数据库连接、创建表
-    await create_tables()
+    create_tables()
 
     # 初始化 Redis 连接并挂载到 app.state（供速率限制等中间件使用）
     app.state.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
