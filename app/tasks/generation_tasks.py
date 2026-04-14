@@ -1,6 +1,6 @@
 """
 AI 图片生成 Celery 任务
-处理 MiniMax 图片编辑的异步任务：下载原图、提取视觉风格、构建提示词、调用MiniMax i2i API、上传结果、更新状态
+处理 Gemini 图片编辑的异步任务：下载原图、提取视觉风格、构建提示词、调用Gemini API、上传结果、更新状态
 """
 import base64
 import logging
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.db.models.image import GenerationTask
-from app.external.minimax_api import MiniMaxClient
+from app.external.google_ai_client import GoogleAIClient
 from app.external.s3_client import S3Client
 from app.core.constants import TaskStatus
 
@@ -26,7 +26,7 @@ class GenerationTaskBase(Task):
     """
 
     _db: Session = None
-    _minimax_client: MiniMaxClient = None
+    _google_ai_client: GoogleAIClient = None
     _s3_client: S3Client = None
 
     @property
@@ -37,11 +37,11 @@ class GenerationTaskBase(Task):
         return self._db
 
     @property
-    def minimax_client(self) -> MiniMaxClient:
-        """懒加载 MiniMax 客户端"""
-        if self._minimax_client is None:
-            self._minimax_client = MiniMaxClient()
-        return self._minimax_client
+    def google_ai_client(self) -> GoogleAIClient:
+        """懒加载 Google AI 客户端"""
+        if self._google_ai_client is None:
+            self._google_ai_client = GoogleAIClient()
+        return self._google_ai_client
 
     @property
     def s3_client(self) -> S3Client:
@@ -93,7 +93,7 @@ def process_generation(self, task_id: str) -> dict:
 
     try:
         result_url = asyncio.get_event_loop().run_until_complete(
-            _execute_generation(task, self.minimax_client, self.s3_client)
+            _execute_generation(task, self.google_ai_client, self.s3_client)
         )
 
         # 更新任务状态为完成
@@ -124,20 +124,20 @@ def process_generation(self, task_id: str) -> dict:
 
 async def _execute_generation(
     task: GenerationTask,
-    minimax_client: MiniMaxClient,
+    google_ai_client: GoogleAIClient,
     s3_client: S3Client,
 ) -> str:
     """
     执行图片生成的核心异步逻辑
 
-    使用 MiniMax i2i 进行图片编辑：
+    使用 Gemini 进行图片编辑：
     1. 下载原始图片
     2. 提取每个编辑区域的视觉风格
     3. 构建包含原文→新文和风格信息的提示词
-    4. 调用 MiniMax i2i 直接生成
+    4. 调用 Gemini 直接生成
 
     [task] 数据库中的生成任务记录
-    [minimax_client] MiniMax 客户端
+    [google_ai_client] Google AI 客户端
     [s3_client] S3 存储客户端
     返回生成图片的 S3 URL
     """
@@ -172,17 +172,16 @@ async def _execute_generation(
         style = await extract_text_region_style(original_bytes, abs_x, abs_y, abs_w, abs_h)
         visual_styles[block_id] = style
 
-    # 构建 MiniMax i2i 提示词（包含原文→新文映射和视觉风格）
-    prompt = _build_minimax_prompt(
+    # 构建 Gemini 提示词（包含原文→新文映射和视觉风格）
+    prompt = _build_gemini_prompt(
         ocr_blocks, edit_blocks, image_width, image_height, detected_language, visual_styles
     )
 
-    # 调用 MiniMax i2i 直接生成
-    logger.info(f"[Generation] Using MiniMax i2i for task: {task.id}")
-    result_b64 = await minimax_client.image_to_image(
+    # 调用 Gemini 进行图片编辑
+    logger.info(f"[Generation] Using Gemini for task: {task.id}")
+    result_b64 = await google_ai_client.edit_image(
         image_bytes=original_bytes,
         prompt=prompt,
-        response_format="base64",
     )
 
     # 将 base64 结果解码为字节
@@ -194,7 +193,7 @@ async def _execute_generation(
     return result_url
 
 
-def _build_minimax_prompt(
+def _build_gemini_prompt(
     ocr_blocks: list[dict],
     edit_blocks: list[dict],
     image_width: int,
@@ -203,9 +202,9 @@ def _build_minimax_prompt(
     visual_styles: dict[str, dict] | None = None,
 ) -> str:
     """
-    构建 MiniMax i2i 图片编辑提示词
+    构建 Gemini 图片编辑提示词
 
-    将 OCR 文字块和编辑指令转化为 MiniMax i2i 的提示词格式，
+    将 OCR 文字块和编辑指令转化为 Gemini 的提示词格式，
     详细描述原文→新文映射、文字位置、视觉风格等信息。
 
     [ocr_blocks] 原始 OCR 识别文字块列表
@@ -214,7 +213,7 @@ def _build_minimax_prompt(
     [image_height] 图片高度
     [detected_language] 检测到的文字语言
     [visual_styles] 文字区域的视觉风格信息
-    返回 MiniMax i2i 格式的提示词
+    返回 Gemini 格式的提示词
     """
     # 构建原文 → 文字块数据的映射
     ocr_map = {b.get("id"): b for b in ocr_blocks}
@@ -265,7 +264,7 @@ def _build_minimax_prompt(
 
     regions_text = "\n".join(regions_list)
 
-    # MiniMax i2i 提示词格式
+    # Gemini 提示词格式
     prompt = f"""图片文字编辑任务。请严格按照以下要求修改指定位置的文字。
 
 图片信息：

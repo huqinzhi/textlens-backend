@@ -104,7 +104,11 @@ class Settings(BaseSettings):
     OCR_SPACE_API_KEY: Optional[str] = None
     OCR_PROVIDER: str = "ocr_space"  # "google_vision" 或 "ocr_space"
 
-    # ── MiniMax 生图配置 ─────────────────────────────────────────────
+    # ── Google AI 生图配置 ──────────────────────────────────────────
+    GOOGLE_AI_API_KEY: Optional[str] = None
+    GOOGLE_AI_IMAGE_MODEL: str = "gemini-3.0-flash-preview"  # 图片编辑模型
+
+    # ── MiniMax 生图配置（已弃用）────────────────────────────────────
     MINIMAX_API_KEY: Optional[str] = None
     MINIMAX_IMAGE_MODEL: str = "image-01"  # 默认生图模型: image-01 / image-01-live
 
