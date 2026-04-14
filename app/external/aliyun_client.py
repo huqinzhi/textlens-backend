@@ -52,7 +52,7 @@ class AliyunClient:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
         # 构建多模态消息格式
-        # ref_mode 可选: repaint(重绘) / refonly(仅参考)
+        # ref_strength 控制参考图影响程度，ref_mode 控制参考模式
         payload = {
             "model": self.model,
             "input": {
@@ -102,21 +102,32 @@ class AliyunClient:
                 raise ExternalServiceError("Aliyun", f"API error: {error_msg}")
 
             # 解析响应
+            # 格式: output.choices[0].message.content[0].image
             output = result.get("output", {})
             choices = output.get("choices", [])
 
-            if choices:
-                message = choices[0].get("message", {})
-                content = message.get("content", [])
-                for item in content:
-                    if isinstance(item, dict) and item.get("image_url"):
-                        image_url = item.get("image_url")
+            if not choices:
+                raise ExternalServiceError("Aliyun", f"No choices in response: {result}")
+
+            message = choices[0].get("message", {})
+            content = message.get("content", [])
+
+            if not content:
+                raise ExternalServiceError("Aliyun", f"No content in message: {result}")
+
+            # 查找图片
+            for item in content:
+                if isinstance(item, dict):
+                    # 优先查找 image 字段
+                    image_url = item.get("image")
+                    if image_url:
                         return await self._download_image_as_base64(image_url)
-                    elif isinstance(item, dict) and item.get("url"):
-                        image_url = item.get("url")
+                    # 也可能是 image_url 字段
+                    image_url = item.get("image_url")
+                    if image_url:
                         return await self._download_image_as_base64(image_url)
 
-            raise ExternalServiceError("Aliyun", f"Unexpected response format: {result}")
+            raise ExternalServiceError("Aliyun", f"No image in response content: {content}")
 
         except ContentModerationError:
             raise
