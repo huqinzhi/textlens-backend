@@ -100,3 +100,13 @@ class CloudflareAIClient:
             if "sensitive" in error_str or "nsfw" in error_str or "content_policy" in error_str:
                 raise ContentModerationError(f"Image content policy violation: {e}")
             raise ExternalServiceError("Cloudflare AI", str(e))
+
+    def _get_mime_type(self, image_bytes: bytes) -> str:
+        """根据图片字节数据判断 MIME 类型"""
+        if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+            return "image/png"
+        elif image_bytes[:2] == b"\xff\xd8":
+            return "image/jpeg"
+        elif image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
+            return "image/webp"
+        return "image/png"
