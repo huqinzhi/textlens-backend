@@ -27,7 +27,7 @@ class AliyunClient:
 
     def __init__(self):
         self.api_key = settings.ALIYUN_API_KEY
-        self.model = settings.ALIYUN_IMAGE_MODEL or "qwen-image-plus"
+        self.model = settings.ALIYUN_IMAGE_MODEL or "wan2.5-i2i-preview"
 
     async def edit_image(
         self,
