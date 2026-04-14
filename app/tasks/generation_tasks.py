@@ -1,6 +1,6 @@
 """
 AI 图片生成 Celery 任务
-处理 Gemini 图片编辑的异步任务：下载原图、提取视觉风格、构建提示词、调用Gemini API、上传结果、更新状态
+处理 Cloudflare AI 图片编辑的异步任务：下载原图、提取视觉风格、构建提示词、调用SD img2img API、上传结果、更新状态
 """
 import base64
 import logging
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.db.models.image import GenerationTask
-from app.external.google_ai_client import GoogleAIClient
+from app.external.cloudflare_ai_client import CloudflareAIClient
 from app.external.s3_client import S3Client
 from app.core.constants import TaskStatus
 
@@ -26,7 +26,7 @@ class GenerationTaskBase(Task):
     """
 
     _db: Session = None
-    _google_ai_client: GoogleAIClient = None
+    _cloudflare_ai_client: CloudflareAIClient = None
     _s3_client: S3Client = None
 
     @property
@@ -37,11 +37,11 @@ class GenerationTaskBase(Task):
         return self._db
 
     @property
-    def google_ai_client(self) -> GoogleAIClient:
-        """懒加载 Google AI 客户端"""
-        if self._google_ai_client is None:
-            self._google_ai_client = GoogleAIClient()
-        return self._google_ai_client
+    def cloudflare_ai_client(self) -> CloudflareAIClient:
+        """懒加载 Cloudflare AI 客户端"""
+        if self._cloudflare_ai_client is None:
+            self._cloudflare_ai_client = CloudflareAIClient()
+        return self._cloudflare_ai_client
 
     @property
     def s3_client(self) -> S3Client:
@@ -93,7 +93,7 @@ def process_generation(self, task_id: str) -> dict:
 
     try:
         result_url = asyncio.get_event_loop().run_until_complete(
-            _execute_generation(task, self.google_ai_client, self.s3_client)
+            _execute_generation(task, self.cloudflare_ai_client, self.s3_client)
         )
 
         # 更新任务状态为完成
@@ -124,20 +124,20 @@ def process_generation(self, task_id: str) -> dict:
 
 async def _execute_generation(
     task: GenerationTask,
-    google_ai_client: GoogleAIClient,
+    cloudflare_ai_client: CloudflareAIClient,
     s3_client: S3Client,
 ) -> str:
     """
     执行图片生成的核心异步逻辑
 
-    使用 Gemini 进行图片编辑：
+    使用 Cloudflare AI Stable Diffusion img2img 进行图片编辑：
     1. 下载原始图片
     2. 提取每个编辑区域的视觉风格
     3. 构建包含原文→新文和风格信息的提示词
-    4. 调用 Gemini 直接生成
+    4. 调用 SD img2img 直接生成
 
     [task] 数据库中的生成任务记录
-    [google_ai_client] Google AI 客户端
+    [cloudflare_ai_client] Cloudflare AI 客户端
     [s3_client] S3 存储客户端
     返回生成图片的 S3 URL
     """
@@ -172,16 +172,18 @@ async def _execute_generation(
         style = await extract_text_region_style(original_bytes, abs_x, abs_y, abs_w, abs_h)
         visual_styles[block_id] = style
 
-    # 构建 Gemini 提示词（包含原文→新文映射和视觉风格）
-    prompt = _build_gemini_prompt(
+    # 构建 Stable Diffusion 提示词（包含原文→新文映射和视觉风格）
+    prompt = _build_sd_prompt(
         ocr_blocks, edit_blocks, image_width, image_height, detected_language, visual_styles
     )
 
-    # 调用 Gemini 进行图片编辑
-    logger.info(f"[Generation] Using Gemini for task: {task.id}")
-    result_b64 = await google_ai_client.edit_image(
+    # 调用 Cloudflare AI SD img2img 进行图片编辑
+    logger.info(f"[Generation] Using Cloudflare SD img2img for task: {task.id}")
+    result_b64 = await cloudflare_ai_client.edit_image(
         image_bytes=original_bytes,
         prompt=prompt,
+        strength=0.7,
+        guidance=7.5,
     )
 
     # 将 base64 结果解码为字节
@@ -193,7 +195,7 @@ async def _execute_generation(
     return result_url
 
 
-def _build_gemini_prompt(
+def _build_sd_prompt(
     ocr_blocks: list[dict],
     edit_blocks: list[dict],
     image_width: int,
@@ -202,9 +204,9 @@ def _build_gemini_prompt(
     visual_styles: dict[str, dict] | None = None,
 ) -> str:
     """
-    构建 Gemini 图片编辑提示词
+    构建 Stable Diffusion 图片编辑提示词
 
-    将 OCR 文字块和编辑指令转化为 Gemini 的提示词格式，
+    将 OCR 文字块和编辑指令转化为 Stable Diffusion 的提示词格式，
     详细描述原文→新文映射、文字位置、视觉风格等信息。
 
     [ocr_blocks] 原始 OCR 识别文字块列表
@@ -213,7 +215,7 @@ def _build_gemini_prompt(
     [image_height] 图片高度
     [detected_language] 检测到的文字语言
     [visual_styles] 文字区域的视觉风格信息
-    返回 Gemini 格式的提示词
+    返回 Stable Diffusion 格式的提示词
     """
     # 构建原文 → 文字块数据的映射
     ocr_map = {b.get("id"): b for b in ocr_blocks}
@@ -264,7 +266,7 @@ def _build_gemini_prompt(
 
     regions_text = "\n".join(regions_list)
 
-    # Gemini 提示词格式
+    # Stable Diffusion 提示词格式
     prompt = f"""图片文字编辑任务。请严格按照以下要求修改指定位置的文字。
 
 图片信息：

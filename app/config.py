@@ -104,9 +104,14 @@ class Settings(BaseSettings):
     OCR_SPACE_API_KEY: Optional[str] = None
     OCR_PROVIDER: str = "ocr_space"  # "google_vision" 或 "ocr_space"
 
-    # ── Flux 生图配置 ───────────────────────────────────────────────
+    # ── Cloudflare AI 生图配置 ────────────────────────────────────
+    CF_ACCOUNT_ID: Optional[str] = None
+    CF_API_TOKEN: Optional[str] = None
+    CF_IMAGE_MODEL: str = "@cf/runwayml/stable-diffusion-v1-5-img2img"
+
+    # ── Flux 生图配置（已弃用）────────────────────────────────────
     FLUX_API_KEY: Optional[str] = None
-    FLUX_MODEL: Optional[str] = "flux-schnell"  # flux-schnell / flux-dev
+    FLUX_MODEL: Optional[str] = "flux-schnell"
 
     # ── Google AI 生图配置（已弃用）────────────────────────────────
     GOOGLE_AI_API_KEY: Optional[str] = None
