@@ -79,11 +79,8 @@ class CloudflareAIClient:
                     raise ContentModerationError("Image content policy violation")
                 raise ExternalServiceError("Cloudflare AI", f"API error: {error_msg}")
 
-            result = response.json()
-            image_data = result.get("result", {}).get("image")
-
-            if not image_data:
-                raise ExternalServiceError("Cloudflare AI", "No image in response")
+            # Cloudflare 返回的是二进制 PNG 数据，直接使用 response.content
+            image_data = base64.b64encode(response.content).decode("utf-8")
 
             return image_data
 
