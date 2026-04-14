@@ -21,8 +21,8 @@ class AliyunClient:
     支持海外节点 API。
     """
 
-    # 海外节点 API - 图片生成
-    BASE_URL = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/text-to-image/generation"
+    # 海外节点 API - 图生图（使用 ref_image 参考图）
+    BASE_URL = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
 
     def __init__(self):
         self.api_key = settings.ALIYUN_API_KEY
@@ -72,6 +72,7 @@ class AliyunClient:
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json",
+                        "X-DashScope-Async": "enable",
                     },
                 )
 
