@@ -53,11 +53,11 @@ class EditBlock(BaseModel):
     用户编辑的单个文字块
 
     [block_id] 对应 OCR 结果中的文字块 ID
-    [original_text] 原始文字内容
+    [original_text] 原始文字内容（可选，如果不提供则从 OCR 结果自动获取）
     [new_text] 用户输入的新文字内容
     """
     block_id: str
-    original_text: str
+    original_text: Optional[str] = None
     new_text: str
 
 
