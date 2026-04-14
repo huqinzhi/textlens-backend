@@ -21,8 +21,10 @@ class AliyunClient:
     支持海外节点 API。
     """
 
-    # 海外节点 API - 图生图（使用 ref_image 参考图）
-    BASE_URL = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+    # 阿里云百炼 API - 图生图（使用 ref_image 参考图）
+    # 海外节点: https://dashscope-intl.aliyuncs.com
+    # 北京节点: https://dashscope.aliyuncs.com
+    BASE_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
 
     def __init__(self):
         self.api_key = settings.ALIYUN_API_KEY
