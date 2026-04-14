@@ -22,8 +22,8 @@ class AliyunClient:
     """
 
     # 阿里云百炼 API - 图生图（美国节点）
-    # 美国节点: https://dashscope-us.aliyuncs.com/compatible-mode/v1
-    BASE_URL = "https://dashscope-us.aliyuncs.com/compatible-mode/v1/services/aigc/text2image/image-synthesis"
+    # 美国节点: https://dashscope-us.aliyuncs.com/api/v1
+    BASE_URL = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
 
     def __init__(self):
         self.api_key = settings.ALIYUN_API_KEY
@@ -141,7 +141,7 @@ class AliyunClient:
         import asyncio
         import time
 
-        task_url = f"https://dashscope-us.aliyuncs.com/compatible-mode/v1/tasks/{task_id}"
+        task_url = f"https://dashscope-us.aliyuncs.com/api/v1/tasks/{task_id}"
         start_time = time.time()
 
         while time.time() - start_time < max_wait_seconds:
