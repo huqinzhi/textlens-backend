@@ -15,13 +15,11 @@ class CreditBalanceResponse(BaseModel):
     [balance] 当前积分余额
     [total_earned] 累计获得积分
     [total_spent] 累计消费积分
-    [daily_free_remaining] 今日剩余免费次数
     [daily_ad_remaining] 今日剩余看广告次数
     """
     balance: int
     total_earned: int
     total_spent: int
-    daily_free_remaining: int
     daily_ad_remaining: int
 
 

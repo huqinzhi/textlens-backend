@@ -44,14 +44,10 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
     # Credits Rules
-    DAILY_FREE_LOW_QUALITY: int = 3
-    CREDIT_LOW_QUALITY: int = 5
-    CREDIT_MID_QUALITY: int = 15
-    CREDIT_HIGH_QUALITY: int = 25
     CREDIT_DAILY_SIGNIN: int = 2
     CREDIT_AD_REWARD: int = 3
     CREDIT_AD_DAILY_LIMIT: int = 5
-    CREDIT_INVITE: int = 20
+    CREDIT_INVITE: int = 40
     CREDIT_REGISTER_BONUS: int = 10
 
     class Config:

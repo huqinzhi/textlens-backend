@@ -27,7 +27,7 @@ class UserService:
 
     async def get_profile(self, current_user) -> UserProfileResponse:
         """
-        获取用户完整资料（含积分和免费次数）
+        获取用户完整资料（含积分信息）
 
         [current_user] 当前登录用户
         返回 UserProfileResponse 用户完整个人资料
@@ -37,16 +37,6 @@ class UserService:
             CreditAccount.user_id == current_user.id
         ).first()
 
-        # 查询今日免费使用次数
-        today = date.today()
-        daily_usage = self.db.query(DailyFreeUsage).filter(
-            DailyFreeUsage.user_id == current_user.id,
-            DailyFreeUsage.date == today,
-        ).first()
-
-        used_count = daily_usage.used_count if daily_usage else 0
-        daily_free_remaining = max(0, settings.FREE_DAILY_LIMIT - used_count)
-
         return UserProfileResponse(
             id=current_user.id,
             email=current_user.email,
@@ -54,7 +44,7 @@ class UserService:
             avatar_url=current_user.avatar_url,
             is_email_verified=getattr(current_user, "is_email_verified", False),
             credit_balance=credit_account.balance if credit_account else 0,
-            daily_free_remaining=daily_free_remaining,
+            has_free_generation=getattr(current_user, "has_free_generation", False),
             created_at=current_user.created_at,
         )
 
@@ -167,7 +157,6 @@ class UserService:
                 "id": str(g.id),
                 "original_image_url": g.original_image_url,
                 "result_image_url": g.result_image_url,
-                "quality": g.quality.value if hasattr(g.quality, 'value') else str(g.quality),
                 "status": g.status.value if hasattr(g.status, 'value') else str(g.status),
                 "credits_cost": g.credits_cost,
                 "is_free": bool(g.is_free),

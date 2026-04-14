@@ -7,19 +7,6 @@
 from enum import Enum
 
 
-class QualityLevel(str, Enum):
-    """
-    AI 生图质量等级枚举
-
-    LOW   - 低质量（512×512，每日免费3次）
-    MEDIUM - 中质量（1024×1024，消耗15积分）
-    HIGH  - 高质量（1024×1024 HD，消耗25积分）
-    """
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-
-
 class TaskStatus(str, Enum):
     """
     Celery 异步任务状态枚举
@@ -99,16 +86,9 @@ class PaymentStatus(str, Enum):
     REFUNDED = "refunded"
 
 
-# ── 积分消耗规则 ────────────────────────────────────────────────────────
-QUALITY_CREDITS_MAP = {
-    QualityLevel.LOW: 5,
-    QualityLevel.MEDIUM: 15,
-    QualityLevel.HIGH: 25,
-}
-
 # ── 积分充值套餐定义 ────────────────────────────────────────────────────
 CREDIT_PACKAGES = {
-    "starter": {"name": "Starter Pack", "price_usd": 0.99, "credits": 100, "bonus": 0},
+    "starter": {"name": "Starter Pack", "price_usd": 1.00, "credits": 100, "bonus": 0},
     "basic":   {"name": "Basic Pack",   "price_usd": 2.99, "credits": 320, "bonus": 20},
     "pro":     {"name": "Pro Pack",     "price_usd": 6.99, "credits": 800, "bonus": 100},
     "premium": {"name": "Premium Pack", "price_usd": 14.99, "credits": 1800, "bonus": 300},

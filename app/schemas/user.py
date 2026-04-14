@@ -103,10 +103,10 @@ class UserProfileResponse(UserResponse):
     用户个人中心详细信息响应体（包含积分信息）
 
     [credit_balance] 积分余额
-    [daily_free_remaining] 今日剩余免费次数
+    [has_free_generation] 是否有免费生成次数
     """
     credit_balance: int = 0
-    daily_free_remaining: int = 0
+    has_free_generation: bool = True
 
 
 class UserUpdateRequest(BaseModel):

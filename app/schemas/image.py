@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 import uuid
-from app.core.constants import QualityLevel, TaskStatus
+from app.core.constants import TaskStatus
 
 
 class TextBlock(BaseModel):
@@ -67,11 +67,9 @@ class GenerateRequest(BaseModel):
 
     [image_id] 原始图片 ID（OCR 识别时返回）
     [edit_blocks] 用户编辑的文字块列表
-    [quality] 生成质量等级
     """
     image_id: str
     edit_blocks: List[EditBlock] = Field(..., min_length=1)
-    quality: QualityLevel = QualityLevel.LOW
 
 
 class GenerationTaskResponse(BaseModel):
@@ -93,7 +91,6 @@ class GenerationTaskResponse(BaseModel):
     status: TaskStatus
     result_image_url: Optional[str] = None
     original_image_url: str
-    quality: QualityLevel
     credits_cost: int
     has_watermark: bool = False
     error_message: Optional[str] = None
@@ -111,7 +108,6 @@ class HistoryItem(BaseModel):
     task_id: uuid.UUID
     original_image_url: str
     result_image_url: Optional[str]
-    quality: QualityLevel
     status: TaskStatus
     credits_cost: int
     created_at: datetime

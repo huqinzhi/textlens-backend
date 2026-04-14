@@ -8,7 +8,7 @@ from app.db.models.image import GenerationTask
 from app.external.s3_client import S3Client
 from app.schemas.image import HistoryItem
 from app.schemas.common import PageResponse
-from app.core.constants import QualityLevel, TaskStatus
+from app.core.constants import TaskStatus
 
 
 class HistoryService:
@@ -45,7 +45,6 @@ class HistoryService:
                 task_id=task.id,
                 original_image_url=task.original_image_url,
                 result_image_url=task.result_image_url,
-                quality=QualityLevel(task.quality.value),
                 status=TaskStatus(task.status.value),
                 credits_cost=task.credits_cost,
                 created_at=task.created_at,

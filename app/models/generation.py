@@ -11,19 +11,6 @@ class GenerationStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-class GenerationQuality(str, enum.Enum):
-    LOW = "low"        # 5 credits
-    MEDIUM = "medium"  # 15 credits
-    HIGH = "high"      # 25 credits
-
-
-QUALITY_CREDITS_MAP = {
-    GenerationQuality.LOW: 5,
-    GenerationQuality.MEDIUM: 15,
-    GenerationQuality.HIGH: 25,
-}
-
-
 class GenerationTask(BaseModel):
     __tablename__ = "generation_tasks"
 
@@ -32,7 +19,6 @@ class GenerationTask(BaseModel):
     result_image_url = Column(String, nullable=True)
     ocr_data = Column(JSON, nullable=True)       # OCR识别结果
     edit_data = Column(JSON, nullable=True)      # 用户编辑内容
-    quality = Column(SAEnum(GenerationQuality), nullable=False, default=GenerationQuality.LOW)
     status = Column(SAEnum(GenerationStatus), nullable=False, default=GenerationStatus.PENDING, index=True)
     credits_cost = Column(Integer, nullable=False, default=5)
     error_message = Column(String, nullable=True)

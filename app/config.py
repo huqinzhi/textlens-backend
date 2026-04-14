@@ -138,12 +138,12 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
     # ── 积分系统配置 ──────────────────────────────────────────────────
-    FREE_DAILY_LIMIT: int = 3            # 每日免费生成次数
     CREDITS_INITIAL_BONUS: int = 10      # 首次注册赠送积分
-    CREDITS_DAILY_CHECKIN: int = 2       # 每日签到积分
-    CREDITS_AD_REWARD: int = 3           # 看广告奖励积分
+    CREDITS_DAILY_CHECKIN: int = 10      # 每日签到积分
+    CREDITS_AD_REWARD: int = 5           # 看广告奖励积分
     CREDITS_AD_DAILY_LIMIT: int = 5      # 每日看广告上限次数
-    CREDITS_INVITE_REWARD: int = 20      # 邀请好友奖励积分
+    CREDITS_INVITE_REWARD: int = 40      # 邀请好友奖励积分
+    GENERATION_CREDITS_COST: int = 20    # 每次生成消耗积分
 
     # ── 图片存储配置 ──────────────────────────────────────────────────
     IMAGE_MAX_SIZE_MB: int = 10

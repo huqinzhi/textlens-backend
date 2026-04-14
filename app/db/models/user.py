@@ -87,6 +87,9 @@ class User(Base):
     # 邀请人 ID（记录是谁推荐注册）
     invited_by = Column(UUID(as_uuid=True), nullable=True)
 
+    # 是否有免费生成次数（新用户首次生成免费）
+    has_free_generation = Column(Boolean, default=True, nullable=False)
+
     # 关联关系
     credit_account = relationship("CreditAccount", back_populates="user", uselist=False)
     credit_transactions = relationship("CreditTransaction", back_populates="user")

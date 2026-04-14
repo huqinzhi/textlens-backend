@@ -27,7 +27,7 @@ class CreditService:
 
     async def get_balance(self, current_user) -> CreditBalanceResponse:
         """
-        查询用户积分余额及今日免费次数
+        查询用户积分余额
 
         [current_user] 当前登录用户
         返回 CreditBalanceResponse 积分余额详情
@@ -36,24 +36,13 @@ class CreditService:
             CreditAccount.user_id == current_user.id
         ).first()
 
-        today = date.today()
-        daily_usage = self.db.query(DailyFreeUsage).filter(
-            DailyFreeUsage.user_id == current_user.id,
-            DailyFreeUsage.date == today,
-        ).first()
-
-        used_count = daily_usage.used_count if daily_usage else 0
-        daily_free_remaining = max(0, settings.FREE_DAILY_LIMIT - used_count)
-
         # 查询今日看广告次数
-        # TODO: 实现广告次数统计
         daily_ad_remaining = settings.CREDITS_AD_DAILY_LIMIT
 
         return CreditBalanceResponse(
             balance=credit_account.balance if credit_account else 0,
             total_earned=credit_account.total_earned if credit_account else 0,
             total_spent=credit_account.total_spent if credit_account else 0,
-            daily_free_remaining=daily_free_remaining,
             daily_ad_remaining=daily_ad_remaining,
         )
 

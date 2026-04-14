@@ -28,13 +28,6 @@ class GenerationStatus(str, enum.Enum):
     CANCELLED = "cancelled"     # 已取消
 
 
-class GenerationQuality(str, enum.Enum):
-    """生成质量枚举"""
-    LOW = "low"         # 低质量 512x512
-    MEDIUM = "medium"   # 中质量 1024x1024
-    HIGH = "high"       # 高质量 2048x2048
-
-
 class Image(Base):
     """
     图片表
@@ -93,7 +86,6 @@ class GenerationTask(Base):
     result_image_url = Column(String(500), nullable=True, comment="生成结果图片URL")
     ocr_data = Column(JSON, nullable=True, comment="OCR识别数据快照")
     edit_data = Column(JSON, nullable=True, comment="用户编辑内容 [{block_id, original, new_text}]")
-    quality = Column(Enum(GenerationQuality), nullable=False, default=GenerationQuality.LOW)
     status = Column(Enum(GenerationStatus), default=GenerationStatus.PENDING, nullable=False)
     credits_cost = Column(Integer, nullable=False, default=0, comment="消耗积分数量")
     is_free = Column(Integer, default=0, comment="是否使用免费次数: 0否 1是")

@@ -3,16 +3,15 @@ AI 生图业务逻辑服务层
 处理积分验证、内容审核、任务创建、Celery调度等核心逻辑
 """
 import uuid
-from datetime import date
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.core.constants import QualityLevel, TaskStatus, QUALITY_CREDITS_MAP, GENERATION_PROMPT_TEMPLATE
-from app.core.exceptions import InsufficientCreditsError, DailyLimitExceededError, NotFoundError, AuthorizationError
-from app.db.models.image import GenerationTask, GenerationStatus, GenerationQuality
-from app.db.models.credit import CreditAccount, CreditTransaction, DailyFreeUsage
+from app.core.constants import TaskStatus, GENERATION_PROMPT_TEMPLATE
+from app.core.exceptions import InsufficientCreditsError, NotFoundError, AuthorizationError
+from app.db.models.image import GenerationTask, GenerationStatus
+from app.db.models.credit import CreditAccount, CreditTransaction
 from app.core.constants import CreditTransactionType, CreditSourceType
 from app.schemas.image import GenerateRequest, GenerationTaskResponse
+from app.config import settings
 
 
 class GenerationService:
@@ -31,26 +30,26 @@ class GenerationService:
         提交 AI 生图任务
 
         执行完整的前置检查：
-        1. 检查免费次数或积分是否充足
-        2. 内容审核（检测违规文字）
-        3. 扣除积分或消耗免费次数
-        4. 创建 GenerationTask 记录
+        1. 检查是否有免费生成次数（新用户1次）
+        2. 检查积分是否充足
+        3. 创建 GenerationTask 记录
+        4. 扣除积分或标记为免费
         5. 提交 Celery 异步任务
 
         [request] 生图请求数据
         [current_user] 当前登录用户
         返回 GenerationTaskResponse 包含任务 ID 和预计等待时间
         """
-        credits_cost = QUALITY_CREDITS_MAP[request.quality]
+        credits_cost = settings.GENERATION_CREDITS_COST
         is_free = False
 
-        # 检查是否可以使用免费次数（低质量）
-        if request.quality == QualityLevel.LOW:
-            daily_usage = self._get_or_create_daily_usage(current_user.id)
-            if daily_usage.used_count < settings.FREE_DAILY_LIMIT:
-                is_free = True
+        # 检查是否有免费生成次数（新用户首次生成免费）
+        if getattr(current_user, 'has_free_generation', False):
+            is_free = True
+            current_user.has_free_generation = False
+            self.db.flush()
 
-        # 如果不用免费次数，检查积分
+        # 如果不是免费，扣除积分
         if not is_free:
             credit_account = self.db.query(CreditAccount).filter(
                 CreditAccount.user_id == current_user.id
@@ -83,19 +82,15 @@ class GenerationService:
             original_image_url=image.original_url,
             ocr_data=ocr_data,
             edit_data=[block.model_dump() for block in request.edit_blocks],
-            quality=GenerationQuality(request.quality.value),
             status=GenerationStatus.PENDING,
             credits_cost=0 if is_free else credits_cost,
             is_free=1 if is_free else 0,
-            has_watermark=1 if is_free else 0,  # 免费生成带水印
+            has_watermark=0,
         )
         self.db.add(task)
 
-        # 扣除积分或消耗免费次数
-        if is_free:
-            daily_usage = self._get_or_create_daily_usage(current_user.id)
-            daily_usage.used_count += 1
-        else:
+        # 扣除积分（非免费情况下）
+        if not is_free:
             self._deduct_credits(current_user.id, credits_cost, str(task.id))
 
         self.db.commit()
@@ -154,30 +149,10 @@ class GenerationService:
         task.status = GenerationStatus.CANCELLED
 
         # 退款积分
-        if not task.is_free and task.credits_cost > 0:
+        if task.credits_cost > 0:
             self._refund_credits(current_user.id, task.credits_cost, str(task.id))
 
         self.db.commit()
-
-    def _get_or_create_daily_usage(self, user_id) -> DailyFreeUsage:
-        """
-        获取或创建用户今日免费次数记录
-
-        [user_id] 用户 ID
-        返回 DailyFreeUsage 今日使用记录
-        """
-        today = date.today()
-        daily_usage = self.db.query(DailyFreeUsage).filter(
-            DailyFreeUsage.user_id == user_id,
-            DailyFreeUsage.date == today,
-        ).first()
-
-        if not daily_usage:
-            daily_usage = DailyFreeUsage(user_id=user_id, date=today, used_count=0)
-            self.db.add(daily_usage)
-            self.db.flush()
-
-        return daily_usage
 
     def _deduct_credits(self, user_id, amount: int, ref_id: str) -> None:
         """
@@ -240,15 +215,14 @@ class GenerationService:
         [task] GenerationTask ORM 对象
         返回 GenerationTaskResponse Pydantic 响应体
         """
-        # 预计等待时间（根据质量和队列状况估算）
-        estimated = {"low": 15, "medium": 20, "high": 30}.get(task.quality.value, 20)
+        # 预计等待时间
+        estimated = 20
 
         return GenerationTaskResponse(
             task_id=task.id,
             status=TaskStatus(task.status.value),
             result_image_url=task.result_image_url,
             original_image_url=task.original_image_url,
-            quality=QualityLevel(task.quality.value),
             credits_cost=task.credits_cost,
             has_watermark=bool(task.has_watermark),
             error_message=task.error_message,
