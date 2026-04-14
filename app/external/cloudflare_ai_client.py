@@ -51,14 +51,12 @@ class CloudflareAIClient:
 
         url = f"{self.BASE_URL}/{self.account_id}/ai/run/{self.model}"
 
-        # 将图片转换为 base64（使用 data URL 格式）
+        # 将图片转换为纯 base64 字符串
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        mime_type = self._get_mime_type(image_bytes)
-        image_data_url = f"data:{mime_type};base64,{image_b64}"
 
         payload = {
             "prompt": prompt,
-            "image": image_data_url,
+            "image": image_b64,
             "strength": strength,
             "guidance": guidance,
         }
